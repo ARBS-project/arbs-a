@@ -230,9 +230,31 @@
     <string name="summary_checkbox_small_icon_mode">Smaller box art in the app grid allows more apps to be visible on screen</string>
 
     <string name="category_host_settings">Host Settings</string>
-    <string name="category_arbs">ARBS (A1-1 test)</string>
+    <string name="category_arbs">ARBS (A1-2)</string>
     <string name="title_arbs_haptics_test">Report PS controller with HD haptics (test)</string>
     <string name="summary_arbs_haptics_test">Test only: tells the host this controller is a PlayStation pad with PCM haptics so the host sends haptics. They are only logged, never output. Off = normal behavior.</string>
+    <string name="title_arbs_apex_first">APEX first (A1-2)</string>
+    <string name="summary_arbs_apex_first">When a Flydigi APEX 6 dongle is connected, it becomes controller 1 and the built-in pad is not reported to the host.</string>
+    <string name="title_arbs_apex_amp">APEX grip haptics strength</string>
+    <string name="summary_arbs_apex_amp">Maximum grip amplitude (hard limit 60 of 127).</string>
+    <string-array name="arbs_apex_amp_names">
+        <item>0 (off)</item>
+        <item>10</item>
+        <item>20</item>
+        <item>30</item>
+        <item>40 (default)</item>
+        <item>50</item>
+        <item>60 (maximum)</item>
+    </string-array>
+    <string-array name="arbs_apex_amp_values">
+        <item>0</item>
+        <item>10</item>
+        <item>20</item>
+        <item>30</item>
+        <item>40</item>
+        <item>50</item>
+        <item>60</item>
+    </string-array>
     <string name="title_arbs_open_log">ARBS log</string>
     <string name="summary_arbs_open_log">View, save to Downloads or copy the receive log</string>
     <string name="title_checkbox_enable_sops">Optimize game settings</string>

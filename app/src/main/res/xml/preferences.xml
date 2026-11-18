@@ -199,6 +199,18 @@
             android:title="@string/title_arbs_haptics_test"
             android:summary="@string/summary_arbs_haptics_test"
             android:defaultValue="false" />
+        <CheckBoxPreference
+            android:key="checkbox_arbs_apex_first"
+            android:title="@string/title_arbs_apex_first"
+            android:summary="@string/summary_arbs_apex_first"
+            android:defaultValue="true" />
+        <ListPreference
+            android:key="list_arbs_apex_amp"
+            android:title="@string/title_arbs_apex_amp"
+            android:summary="@string/summary_arbs_apex_amp"
+            android:entries="@array/arbs_apex_amp_names"
+            android:entryValues="@array/arbs_apex_amp_values"
+            android:defaultValue="40" />
         <Preference
             android:key="arbs_open_log"
             android:title="@string/title_arbs_open_log"

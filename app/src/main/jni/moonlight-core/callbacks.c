@@ -104,7 +104,7 @@ Java_com_limelight_nvstream_jni_MoonBridge_init(JNIEnv *env, jclass clazz) {
     BridgeClRumbleTriggersMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClRumbleTriggers", "(SSS)V");
     BridgeClSetMotionEventStateMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClSetMotionEventState", "(SBS)V");
     BridgeClSetControllerLEDMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClSetControllerLED", "(SBBB)V");
-    BridgeClControllerHapticsMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClControllerHaptics", "(SISS)V");
+    BridgeClControllerHapticsMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClControllerHaptics", "(SISS[S)V");
     BridgeClSetAdaptiveTriggersMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClSetAdaptiveTriggers", "(SBBB[B[B)V");
 }
 
@@ -405,8 +405,20 @@ void BridgeClControllerHaptics(uint16_t controllerNumber, uint32_t sequence, con
         if (v > peak) peak = v;
     }
     if (peak > 32767) peak = 32767;
+    // ARBS A1-2: also hand a copy of the PCM (interleaved L,R S16, 'frames' pairs) to Java. The borrowed buffer is
+    // not retained; the Java side only filters into a small queue (no blocking).
+    jshortArray arr = NULL;
+    if (frames > 0 && frames <= 240) {
+        arr = (*env)->NewShortArray(env, (jsize)frames * 2);
+        if (arr != NULL) {
+            (*env)->SetShortArrayRegion(env, arr, 0, (jsize)frames * 2, (const jshort*)samples);
+        }
+    }
     (*env)->CallStaticVoidMethod(env, GlobalBridgeClass, BridgeClControllerHapticsMethod,
-                                 (jshort)controllerNumber, (jint)sequence, (jshort)frames, (jshort)peak);
+                                 (jshort)controllerNumber, (jint)sequence, (jshort)frames, (jshort)peak, arr);
+    if (arr != NULL) {
+        (*env)->DeleteLocalRef(env, arr);
+    }
     if ((*env)->ExceptionCheck(env)) {
         // We will crash here
         (*JVM)->DetachCurrentThread(JVM);

@@ -18,3 +18,12 @@
 
 ## 배포 시 의무 요약
 GPL-3.0: 동일 라이선스로 대응 소스 제공, 저작권·라이선스 고지 유지, 수정 표시, 추가 제한 금지. 현재는 개인 시험용이며 배포하지 않는다.
+
+## A1-2 modifications (ARBS)
+
+- New: `com.limelight.binding.input.driver.ApexController` (Flydigi APEX 6 dongle, VID 0x37D7/PID 0x2502; extends `Xbox360Controller`; never writes IF0 OUT),
+  `com.limelight.arbs.ApexHaptics` / `ApexPcmPipeline` / `ApexProtocol` (PCM haptics -> grip output over IF2; frame bytes ported from the A0 test app, which
+  follows ApexSenseBridge d831575 `src/flydigi/Apex6Protocol.cpp` and `Apex5Device.cpp`).
+- Changed: `AbstractXboxController` (overridable `claimInterfaces()`), `UsbDriverService` (claims the APEX), `ControllerHandler` (APEX-first numbering, built-in pad not reported when APEX is present),
+  `Game` ([APEX stop] button, session/pause hooks), `MoonBridge` + `callbacks.c` (`bridgeClControllerHaptics` now also passes the PCM as `short[]`), preferences/strings, unit tests (JUnit 4.13.2, test scope only).
+- ApexSenseBridge license note: its LICENSE file says GPL-3.0-or-later while its README says MIT; only protocol facts (byte layouts) are used here, no ASB source code is copied.

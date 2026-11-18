@@ -185,7 +185,10 @@ public class UsbDriverService extends Service implements UsbDriverListener {
 
             AbstractController controller;
 
-            if (XboxOneController.canClaimDevice(device)) {
+            if (ApexController.canClaimDevice(device)) {
+                controller = new ApexController(device, connection, nextDeviceId++, this);
+            }
+            else if (XboxOneController.canClaimDevice(device)) {
                 controller = new XboxOneController(device, connection, nextDeviceId++, this);
             }
             else if (Xbox360Controller.canClaimDevice(device)) {
@@ -275,7 +278,8 @@ public class UsbDriverService extends Service implements UsbDriverListener {
     }
 
     public static boolean shouldClaimDevice(UsbDevice device, boolean claimAllAvailable) {
-        return ((!kernelSupportsXboxOne() || !isRecognizedInputDevice(device) || claimAllAvailable) && XboxOneController.canClaimDevice(device)) ||
+        return ApexController.canClaimDevice(device) || // ARBS A1-2: always claim the APEX 6 dongle
+                ((!kernelSupportsXboxOne() || !isRecognizedInputDevice(device) || claimAllAvailable) && XboxOneController.canClaimDevice(device)) ||
                 ((!isRecognizedInputDevice(device) || claimAllAvailable) && Xbox360Controller.canClaimDevice(device)) ||
                 // We must not call isRecognizedInputDevice() because wireless controllers don't share the same product ID as the dongle
                 ((!kernelSupportsXbox360W() || claimAllAvailable) && Xbox360WirelessDongle.canClaimDevice(device));

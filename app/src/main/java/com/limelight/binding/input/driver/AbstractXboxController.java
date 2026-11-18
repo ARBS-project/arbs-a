@@ -96,7 +96,8 @@ public abstract class AbstractXboxController extends AbstractController {
         };
     }
 
-    public boolean start() {
+    /** ARBS A1-2: subclasses (ApexController) may claim only the interfaces they need. */
+    protected boolean claimInterfaces() {
         // Force claim all interfaces
         for (int i = 0; i < device.getInterfaceCount(); i++) {
             UsbInterface iface = device.getInterface(i);
@@ -105,6 +106,13 @@ public abstract class AbstractXboxController extends AbstractController {
                 LimeLog.warning("Failed to claim interfaces");
                 return false;
             }
+        }
+        return true;
+    }
+
+    public boolean start() {
+        if (!claimInterfaces()) {
+            return false;
         }
 
         // Find the endpoints

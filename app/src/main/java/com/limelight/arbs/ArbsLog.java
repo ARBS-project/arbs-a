@@ -45,6 +45,12 @@ public final class ArbsLog {
         return instance;
     }
 
+    /** 로그가 아직 열리지 않았으면 조용히 무시하는 정적 헬퍼(USB/엔진 스레드용). */
+    public static void i(String s) {
+        ArbsLog a = peek();
+        if (a != null) a.line(s);
+    }
+
     /** 앱 컨텍스트 없이 JNI 스레드에서 호출할 때: get()이 한 번 불린 뒤에만 유효. */
     public static synchronized ArbsLog peek() {
         return instance;

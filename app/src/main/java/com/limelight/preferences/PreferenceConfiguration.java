@@ -131,6 +131,8 @@ public class PreferenceConfiguration {
     public String language;
     public boolean smallIconMode, multiController, usbDriver, flipFaceButtons;
     public boolean arbsHapticsTest; // ARBS A1-1
+    public boolean arbsApexFirst = true; // ARBS A1-2
+    public int arbsApexAmp = 40; // ARBS A1-2 (0..60 of 127)
     public boolean onscreenController;
     public boolean onlyL3R3;
     public boolean showGuideButton;
@@ -579,6 +581,12 @@ public class PreferenceConfiguration {
         config.smallIconMode = prefs.getBoolean(SMALL_ICONS_PREF_STRING, getDefaultSmallMode(context));
         config.multiController = prefs.getBoolean(MULTI_CONTROLLER_PREF_STRING, DEFAULT_MULTI_CONTROLLER);
         config.arbsHapticsTest = prefs.getBoolean("checkbox_arbs_haptics_test", false);
+        config.arbsApexFirst = prefs.getBoolean("checkbox_arbs_apex_first", true);
+        try {
+            config.arbsApexAmp = Math.max(0, Math.min(60, Integer.parseInt(prefs.getString("list_arbs_apex_amp", "40"))));
+        } catch (NumberFormatException e) {
+            config.arbsApexAmp = 40;
+        }
         config.usbDriver = prefs.getBoolean(USB_DRIVER_PREF_SRING, DEFAULT_USB_DRIVER);
         config.onscreenController = prefs.getBoolean(ONSCREEN_CONTROLLER_PREF_STRING, ONSCREEN_CONTROLLER_DEFAULT);
         config.onlyL3R3 = prefs.getBoolean(ONLY_L3_R3_PREF_STRING, ONLY_L3_R3_DEFAULT);

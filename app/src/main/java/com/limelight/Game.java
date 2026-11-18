@@ -1061,8 +1061,48 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         inputCaptureProvider.destroy();
     }
 
+    // ARBS A1-2: [APEX stop] button shown on the stream screen (this upstream version has no in-stream menu)
+    private android.widget.Button arbsApexStopButton;
+
+    private void arbsShowApexButton() {
+        com.limelight.arbs.ApexHaptics.State st = com.limelight.arbs.ApexHaptics.get().getState();
+        if (arbsApexStopButton != null || st == com.limelight.arbs.ApexHaptics.State.NONE
+                || st == com.limelight.arbs.ApexHaptics.State.UNSUPPORTED) {
+            return;
+        }
+        final android.widget.Button b = new android.widget.Button(this);
+        b.setText("APEX 정지");
+        b.setAllCaps(false);
+        b.setAlpha(0.6f);
+        b.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                com.limelight.arbs.ApexHaptics h = com.limelight.arbs.ApexHaptics.get();
+                if (h.isUserStopped()) {
+                    h.userResume();
+                    b.setText("APEX 정지");
+                }
+                else {
+                    h.userStop();
+                    b.setText("APEX 재개");
+                }
+            }
+        });
+        arbsApexStopButton = b;
+        addContentView(b, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.TOP | android.view.Gravity.END));
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        com.limelight.arbs.ApexHaptics.get().onResume();
+    }
+
     @Override
     protected void onPause() {
+        com.limelight.arbs.ApexHaptics.get().onPause();
         if (isFinishing()) {
             // Stop any further input device notifications before we lose focus (and pointer capture)
             if (controllerHandler != null) {
@@ -2227,6 +2267,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     }
 
     private void stopConnection() {
+        // ARBS A1-2: stop APEX output before anything else (stop sequence on IF2)
+        com.limelight.arbs.ApexHaptics.get().onSessionEnd("stopConnection");
         if (connecting || connected) {
             connecting = connected = false;
             updatePipAutoEnter();
@@ -2415,6 +2457,13 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 connected = true;
                 connecting = false;
                 updatePipAutoEnter();
+
+                // ARBS A1-2: start APEX session (enable once) and report the APEX to the host
+                com.limelight.arbs.ApexHaptics.get().onSessionStart(prefConfig.arbsApexAmp);
+                if (controllerHandler != null) {
+                    controllerHandler.arbsSessionStarted();
+                }
+                arbsShowApexButton();
 
                 // Hide the mouse cursor now after a short delay.
                 // Doing it before dismissing the spinner seems to be undone

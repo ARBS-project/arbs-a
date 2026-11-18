@@ -37,6 +37,7 @@ import android.widget.Toast;
 import com.limelight.LimeLog;
 import com.limelight.R;
 import com.limelight.binding.input.driver.AbstractController;
+import com.limelight.binding.input.driver.ApexController;
 import com.limelight.binding.input.driver.UsbDriverListener;
 import com.limelight.binding.input.driver.UsbDriverService;
 import com.limelight.nvstream.NvConnection;
@@ -532,6 +533,14 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             if (prefConfig.gamepadMotionSensorsFallbackToDevice && context.controllerNumber == 0 && devContext.sensorManager == null) {
                 devContext.sensorManager = deviceSensorManager;
             }
+        }
+        else if (context instanceof UsbDeviceContext && ((UsbDeviceContext) context).device instanceof ApexController
+                && prefConfig.arbsApexFirst) {
+            // ARBS A1-2: APEX first -> controller 0
+            context.controllerNumber = 0;
+            currentControllers |= 1;
+            context.reservedControllerNumber = true;
+            LimeLog.info("APEX assigned as controller 0 (APEX first)");
         }
         else {
             if (prefConfig.multiController) {
@@ -1075,6 +1084,33 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
     }
 
     /** ARBS A1-1: 어떤 컨트롤러가 어떤 type/capability 로 호스트에 보고되는지 로그(IP·토큰 없음). */
+    // ARBS A1-2: APEX 6 dongle handling
+    private boolean arbsApexPresent() {
+        for (int i = 0; i < usbDeviceContexts.size(); i++) {
+            if (usbDeviceContexts.valueAt(i).device instanceof ApexController) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True when "APEX first" is on and an APEX is attached: the APEX is controller 0 and the built-in pad is not reported. */
+    private boolean arbsApexPriority() {
+        return prefConfig.arbsApexFirst && arbsApexPresent();
+    }
+
+    private boolean arbsBuiltinSuppressedLogged;
+
+    /** Called when the stream starts: reports the APEX to the host without waiting for its first input event. */
+    public void arbsSessionStarted() {
+        for (int i = 0; i < usbDeviceContexts.size(); i++) {
+            UsbDeviceContext c = usbDeviceContexts.valueAt(i);
+            if (c.device instanceof ApexController) {
+                assignControllerNumberIfNeeded(c);
+            }
+        }
+    }
+
     private void arbsLogArrival(String source, int vid, int pid, short number, byte reportedType, int buttons, short caps, byte detectedType) {
         try {
             com.limelight.arbs.ArbsLog.get(activityContext).line(String.format(java.util.Locale.US,
@@ -1216,6 +1252,13 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
     }
 
     private void sendControllerInputPacket(GenericControllerContext originalContext) {
+        if (originalContext instanceof InputDeviceContext && !originalContext.external && arbsApexPriority()) {
+            if (!arbsBuiltinSuppressedLogged) {
+                arbsBuiltinSuppressedLogged = true;
+                com.limelight.arbs.ArbsLog.i("APEX 우선: 내장 패드 입력은 호스트로 보내지 않음");
+            }
+            return;
+        }
         assignControllerNumberIfNeeded(originalContext);
 
         // Take the context's controller number and fuse all inputs with the same number
@@ -3102,6 +3145,10 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
         @Override
         public void sendControllerArrival() {
+            if (!external && arbsApexPriority()) {
+                com.limelight.arbs.ArbsLog.i("APEX 우선: 내장 패드 도착 보고 생략 (" + name + ")");
+                return;
+            }
             byte type;
             switch (inputDevice.getVendorId()) {
                 case 0x045e: // Microsoft
@@ -3218,7 +3265,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
             // ARBS A1-1: optional test mode so the host sends PCM haptics to this (built-in) controller;
             // the callbacks only log. Off by default; changes only what this client reports.
-            if (prefConfig.arbsHapticsTest) {
+            if (prefConfig.arbsHapticsTest && !arbsApexPresent()) {
                 reportedType = MoonBridge.LI_CTYPE_PS;
                 capabilities |= MoonBridge.LI_CCAP_HAPTICS_PCM;
             }
@@ -3313,6 +3360,9 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         @Override
         public void sendControllerArrival() {
             arbsLogArrival("UsbDriver", vendorId, productId, controllerNumber, device.getType(), device.getSupportedButtonFlags(), device.getCapabilities(), device.getType());
+            if (device instanceof ApexController) {
+                com.limelight.arbs.ApexHaptics.get().setControllerNumber(controllerNumber);
+            }
             conn.sendControllerArrivalEvent((byte)controllerNumber, getActiveControllerMask(),
                     device.getType(), device.getSupportedButtonFlags(), device.getCapabilities());
         }

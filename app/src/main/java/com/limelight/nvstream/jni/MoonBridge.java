@@ -282,8 +282,14 @@ public class MoonBridge {
     }
 
     // ARBS A1-1: log-only callbacks (no output to any device)
-    public static void bridgeClControllerHaptics(short controllerNumber, int sequence, short frames, short peak) {
+    public static void bridgeClControllerHaptics(short controllerNumber, int sequence, short frames, short peak, short[] pcm) {
         com.limelight.arbs.ArbsFeedbackLog.onHaptics(controllerNumber, sequence, frames, peak);
+        // ARBS A1-2: PCM -> APEX grip (non-blocking: filter + queue only). Never let an exception reach JNI.
+        if (pcm != null) {
+            try {
+                com.limelight.arbs.ApexHaptics.get().onPcm(controllerNumber, sequence, pcm, frames & 0xFFFF);
+            } catch (Throwable ignored) { }
+        }
     }
 
     public static void bridgeClSetAdaptiveTriggers(short controllerNumber, byte eventFlags, byte typeLeft, byte typeRight, byte[] left, byte[] right) {
@@ -300,6 +306,7 @@ public class MoonBridge {
 
     public static void bridgeClConnectionTerminated(int errorCode) {
         com.limelight.arbs.ArbsFeedbackLog.flush("연결 종료 code=" + errorCode);
+        com.limelight.arbs.ApexHaptics.get().onSessionEnd("connectionTerminated code=" + errorCode);
         com.limelight.arbs.ArbsLog a = com.limelight.arbs.ArbsLog.peek();
         if (a != null) a.line("연결 종료(connectionTerminated) code=" + errorCode);
         if (connectionListener != null) {
