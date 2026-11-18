@@ -5,9 +5,11 @@ import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
+import android.os.Process;
 import android.os.SystemClock;
 
 import java.util.Locale;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * ARBS A1-2: PCM 햅틱 -> APEX 그립 출력 엔진(싱글톤). IF2(OUT 0x06 / IN 0x83)로만 0x53/0x57 을 보낸다. IF0 OUT 은 쓰지 않는다.
@@ -31,10 +33,12 @@ public final class ApexHaptics {
     private static final long NO_PCM_NEUTRAL_MS = 100;
     private static final long KEEPALIVE_MS = 50;
     private static final int IDLE_ENTER_FRAMES = 8;
-    private static final long MAX_LAG_NS = 24_000_000L;
     private static final int MAX_RX_LOG = 20;
 
     public final ApexPcmPipeline pipe = new ApexPcmPipeline();
+    /** ARBS A1-3: 일반 진동 -> 그립 사인(PCM 비무음 채널이 우선). */
+    public final ApexRumbleSynth rumble = new ApexRumbleSynth();
+    private final ApexScheduler sched = new ApexScheduler();
 
     private volatile State state = State.NONE;
     private volatile boolean sessionRunning, paused, userStopped, terminate, active;
@@ -171,6 +175,18 @@ public final class ApexHaptics {
         }
     }
 
+    /**
+     * ARBS A1-3: rumble 값(부호 없는 16비트) 수신(제어 스레드, 블로킹 없음). 값은 항상 기록하며(활성화 직전 값도 유지),
+     * 비활성 동안 엔진은 출력하지 않고 정지 시퀀스에서 값을 지운다. 3초 무갱신이면 엔진이 자동 정지. (0,0) 이면 즉시 정지.
+     */
+    public void onRumble(int low16, int high16) {
+        totRumbleCalls++;
+        if (!active) totRumbleInactive++;
+        rumble.set(low16, high16, System.nanoTime());
+    }
+
+    private volatile long totRumbleCalls, totRumbleInactive;
+
     /** PCM 콜백(제어 수신 스레드)에서 호출. 블로킹 없음: 필터 + 큐 push 만. */
     public void onPcm(short controller, int sequence, short[] pcm, int frames) {
         totCalls++;
@@ -208,7 +224,9 @@ public final class ApexHaptics {
 
     // ---------------------------------------------------------------- 엔진 스레드
 
-    private long sentFrames, driveFrames, neutralFrames, underruns, resyncs, rxTotal;
+    private long sentFrames, driveFrames, neutralFrames, underruns, rxTotal, rumbleFrames;
+    // A1-3 측정(엔진 스레드 전용, 1초마다 초기화): bulkTransfer(0x57) / rxPoll / 슬롯 대기 오차
+    private long xferSum, xferMax, xferN, rxSum, rxMax, rxN, sleepErrSum, sleepErrMax, sleepErrN;
     private int rxLogged;
     private byte[] rxBuf;
 
@@ -217,24 +235,26 @@ public final class ApexHaptics {
             if (!probe()) return;
             state = State.READY;
             ArbsLog.i("APEX 준비됨(GetInfo 통과). 세션 진행 + 포그라운드일 때 활성화됩니다");
+            try {
+                // A1-3: 오디오급 우선순위(실패해도 무시)
+                Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO);
+            } catch (Throwable ignored) { }
             long statsAt = System.nanoTime();
-            long t0 = 0;
-            long frameNo = 0;
             long lastSendNs = 0;
             int zeroRun = 0;
             boolean timeoutLogged = false;
             int[] l = new int[8];
             int[] r = new int[8];
+            ApexScheduler.Decision dec = new ApexScheduler.Decision();
             while (!terminate) {
                 boolean want = state == State.READY && sessionRunning && !paused && !userStopped;
                 if (want && !active) {
                     if (!activate()) break;
-                    t0 = System.nanoTime();
-                    frameNo = 0;
+                    sched.start(System.nanoTime());
                     lastSendNs = 0;
                     zeroRun = 0;
                     timeoutLogged = false;
-                    statsAt = t0;
+                    statsAt = System.nanoTime();
                 } else if (!want && active) {
                     deactivate(currentStopReason());
                 }
@@ -242,20 +262,26 @@ public final class ApexHaptics {
                     Thread.sleep(15);
                     continue;
                 }
-                // ---- 한 틱 (8 ms)
+                // ---- 한 틱 (8 ms 슬롯, 절대 기한)
                 long now = System.nanoTime();
-                long target = t0 + frameNo * ApexProtocol.FRAME_MS * 1_000_000L;
-                if (now - target > MAX_LAG_NS) {   // 너무 늦으면 따라잡지 않고 재동기(버스트 금지)
-                    t0 = now;
-                    frameNo = 0;
-                    target = now;
-                    resyncs++;
+                long late = now - sched.target();
+                sched.poll(now, dec);
+                if (dec.waitNs > 0) {
+                    LockSupport.parkNanos(dec.waitNs);
+                    if (Thread.interrupted()) throw new InterruptedException();
+                    continue;
                 }
-                long waitNs = target - now;
-                if (waitNs > 1_000_000L) Thread.sleep(waitNs / 1_000_000L);
-                frameNo++;
-
+                if (dec.skipped == 0 && !dec.catchingUp) {
+                    sleepErrSum += late;
+                    sleepErrMax = Math.max(sleepErrMax, late);
+                    sleepErrN++;
+                }
+                sched.consume();
+                boolean catchingUp = dec.catchingUp;
                 now = System.nanoTime();
+                if (rumble.checkTimeout(now)) {
+                    ArbsLog.i("APEX rumble 타임아웃(3초 무갱신) -> 진동 정지");
+                }
                 if (now - lastPcmNs > NO_PCM_NEUTRAL_MS * 1_000_000L) {
                     if (pipe.queueSize() > 0) pipe.clearQueue();
                     if (!timeoutLogged && lastPcmNs != 0) {
@@ -278,6 +304,12 @@ public final class ApexHaptics {
                 } else {
                     for (int i = 0; i < 8; i++) { l[i] = 0; r[i] = 0; }
                 }
+                if (catchingUp && n < 8 && avail < 8 && !rumble.isActive()) {
+                    // 따라잡는 중인데 보낼 샘플이 없음: 이 슬롯은 건너뜀(무음 구간 보충 프레임 불필요)
+                    continue;
+                }
+                // 일반 진동: PCM 이 비무음인 채널은 PCM 우선, 아니면 rumble 사인
+                if (rumble.mix(l, r, 8, pipe.getCap()) > 0) rumbleFrames++;
                 boolean allZero = true;
                 for (int i = 0; i < 8; i++) if (l[i] != 0 || r[i] != 0) { allZero = false; break; }
                 if (allZero) zeroRun++; else zeroRun = 0;
@@ -286,14 +318,27 @@ public final class ApexHaptics {
                         || (now - lastSendNs) >= KEEPALIVE_MS * 1_000_000L;
                 if (send) {
                     byte[] f = ApexProtocol.gripFrame(l, r);
-                    if (!sendFrame(f, "0x57")) {
+                    long x0 = System.nanoTime();
+                    boolean ok = sendFrame(f, "0x57");
+                    long xd = System.nanoTime() - x0;
+                    xferSum += xd;
+                    xferMax = Math.max(xferMax, xd);
+                    xferN++;
+                    if (!ok) {
                         ArbsLog.i("APEX 0x57 전송 실패 -> 정지 시퀀스 후 엔진 중단");
                         break;
                     }
                     lastSendNs = now;
                     sentFrames++;
                     if (allZero) neutralFrames++; else driveFrames++;
-                    rxPoll();
+                    if (!catchingUp) {
+                        long r0 = System.nanoTime();
+                        rxPoll();
+                        long rd = System.nanoTime() - r0;
+                        rxSum += rd;
+                        rxMax = Math.max(rxMax, rd);
+                        rxN++;
+                    }
                 }
 
                 if (now - statsAt >= 1_000_000_000L) {
@@ -329,16 +374,24 @@ public final class ApexHaptics {
         winForeign = 0;
         long drop = pipe.getAndResetDropped();
         int peak = pipe.getAndResetPeak();
-        if (packets == 0 && driveFrames == 0 && sentFrames < 120 && gaps == 0) {
+        if (packets == 0 && driveFrames == 0 && rumbleFrames == 0 && sentFrames < 120 && gaps == 0) {
             // 조용한 구간은 로그를 아낀다(5초마다만)
             if (++quietTicks < 5) { resetWindow(); return; }
         }
         quietTicks = 0;
+        long missed = sched.getAndResetMissed();
+        long resyncs = sched.getAndResetResyncs();
+        long catchups = sched.getAndResetCatchups();
         ArbsLog.i(String.format(Locale.US,
-                "APEX 송신: %.0f프레임/초(구동 %d, 중립 %d) 큐=%d 폐기=%d 언더런=%d 재동기=%d PCM=%d패킷 갭리셋=%d 타컨트롤러=%d 출력peak=%d/127",
-                sentFrames / sec, driveFrames, neutralFrames, pipe.queueSize(), drop, underruns, resyncs, packets, gaps, foreign, peak));
+                "APEX 송신: %.0f프레임/초(구동 %d, 중립 %d, rumble %d) 큐=%d 폐기=%d 언더런=%d PCM=%d패킷 갭리셋=%d 타컨트롤러=%d 출력peak=%d/127 | "
+                        + "bulk(0x57) 평균/최대=%.2f/%.2fms rx폴 평균/최대=%.2f/%.2fms 슬립오차 평균/최대=%.2f/%.2fms 놓친슬롯=%d 재동기=%d 따라잡기=%d rumble호출=%d(L=%d H=%d)",
+                sentFrames / sec, driveFrames, neutralFrames, rumbleFrames, pipe.queueSize(), drop, underruns, packets, gaps, foreign, peak,
+                avgMs(xferSum, xferN), xferMax / 1e6, avgMs(rxSum, rxN), rxMax / 1e6, avgMs(sleepErrSum, sleepErrN), sleepErrMax / 1e6,
+                missed, resyncs, catchups, totRumbleCalls, rumble.low8(), rumble.high8()));
         resetWindow();
     }
+
+    private static double avgMs(long sumNs, long n) { return n == 0 ? 0 : sumNs / 1e6 / n; }
 
     private int quietTicks;
 
@@ -346,8 +399,9 @@ public final class ApexHaptics {
         sentFrames = 0;
         driveFrames = 0;
         neutralFrames = 0;
+        rumbleFrames = 0;
         underruns = 0;
-        resyncs = 0;
+        xferSum = xferMax = xferN = rxSum = rxMax = rxN = sleepErrSum = sleepErrMax = sleepErrN = 0;
     }
 
     /** GetInfo 1회(A0 와 같은 IF2 교환). Pro + 그립 햅틱 + 체크섬 일치일 때만 true. */
@@ -402,7 +456,11 @@ public final class ApexHaptics {
         winPackets = winGaps = winForeign = winInactive = 0;
         haveSeq = false;
         lastPcmNs = 0;
-        sentFrames = driveFrames = neutralFrames = underruns = resyncs = 0;
+        sentFrames = driveFrames = neutralFrames = underruns = rumbleFrames = 0;
+        xferSum = xferMax = xferN = rxSum = rxMax = rxN = sleepErrSum = sleepErrMax = sleepErrN = 0;
+        sched.getAndResetMissed();
+        sched.getAndResetResyncs();
+        sched.getAndResetCatchups();
         quietTicks = 0;
         ArbsLog.i("APEX 활성화: 0x53 그립 실시간 활성 1건 송신 후 94ms 대기");
         if (!sendFrame(ApexProtocol.gripRealtimeEnable(), "0x53 활성")) {
@@ -417,6 +475,7 @@ public final class ApexHaptics {
 
     private void deactivate(String reason) {
         ArbsLog.i("APEX 정지 시퀀스 시작: " + reason);
+        rumble.clear();   // 정지 후 재개 때 오래된 진동이 되살아나지 않게
         int ok = sendStopSequence();
         active = false;
         ArbsLog.i("APEX 정지 완료: 전송 성공 " + ok + "/5, PCM 비활성 중 수신 " + winInactive + "패킷");

@@ -19,8 +19,8 @@ import java.util.Arrays;
  *    IF1/IF3 are never touched.
  *  - input: IF0 IN 0x81 is parsed by the existing Xbox 360 parser (layout unverified for this device: the first 3 distinct raw
  *    reports are written to the ARBS log).
- *  - output: NOTHING is ever written to IF0 OUT (no LED command, no rumble). rumble()/rumbleTriggers() only log.
- *    Haptics go through {@link ApexHaptics} (IF2, grip only).
+ *  - output: NOTHING is ever written to IF0 OUT (no LED command, no rumble). rumbleTriggers() only logs;
+ *    rumble() (A1-3) and PCM haptics go through {@link ApexHaptics} (IF2, grip only, amplitude <= 60/127).
  */
 public class ApexController extends Xbox360Controller {
     public static final int VID = 0x37D7;
@@ -160,15 +160,16 @@ public class ApexController extends Xbox360Controller {
         super.stop();
     }
 
-    /** Log only. IF0 OUT is never written. */
+    /** A1-3: rumble -> 그립 사인(IF2, 상한 <=60/127). IF0 OUT is never written. */
     @Override
     public void rumble(short lowFreqMotor, short highFreqMotor) {
         if ((lowFreqMotor != lastLow || highFreqMotor != lastHigh) && rumbleLogged < 200) {
             rumbleLogged++;
-            ArbsLog.i(String.format("APEX rumble 수신(로그만, 출력 없음): low=%d high=%d", lowFreqMotor & 0xFFFF, highFreqMotor & 0xFFFF));
+            ArbsLog.i(String.format("APEX rumble 수신(그립 출력): low=%d high=%d", lowFreqMotor & 0xFFFF, highFreqMotor & 0xFFFF));
         }
         lastLow = lowFreqMotor;
         lastHigh = highFreqMotor;
+        ApexHaptics.get().onRumble(lowFreqMotor & 0xFFFF, highFreqMotor & 0xFFFF);
     }
 
     @Override
