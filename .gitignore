@@ -41,4 +41,5 @@ build/
 app/.externalNativeBuild/
 
 # NDK stuff
-.cxx/
+.cxx/build*.out
+out/
