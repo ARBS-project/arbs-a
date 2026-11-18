@@ -23,7 +23,9 @@ public final class ArbsFeedbackLog {
     private static long totalPackets;
     private static boolean firstLogged;
 
-    public static void onHaptics(short controller, int sequence, short frameCount, short peakAbs) {
+    private static int cEntryTotal, cNoPcmTotal;
+
+    public static void onHaptics(short controller, int sequence, short frameCount, short peakAbs, int cEntry, int cNoPcm) {
         ArbsLog log = ArbsLog.peek();
         if (log == null) return;
         long now = System.currentTimeMillis();
@@ -36,6 +38,8 @@ public final class ArbsFeedbackLog {
             if (windowStartMs == 0) { windowStartMs = now; firstSeqInWindow = sequence; }
             if (haveSeq && sequence != lastSeq + 1) gaps++;
             haveSeq = true;
+            cEntryTotal = cEntry;
+            cNoPcmTotal = cNoPcm;
             lastSeq = sequence;
             lastController = controller & 0xFFFF;
             count++;
@@ -68,8 +72,9 @@ public final class ArbsFeedbackLog {
     private static String summaryLocked(long now) {
         double sec = Math.max(0.001, (now - windowStartMs) / 1000.0);
         String s = String.format(Locale.US,
-                "햅틱 PCM: ctrl=%d %.0f패킷/초 seq %d..%d 프레임합=%d 시퀀스갭=%d peak=%d",
-                lastController, count / sec, firstSeqInWindow, lastSeq, frames, gaps, peak);
+                "햅틱 PCM: ctrl=%d %.0f패킷/초(Java도착) seq %d..%d 프레임합=%d 시퀀스갭=%d peak=%d | C콜백 누계=%d PCM배열없음 누계=%d | %s",
+                lastController, count / sec, firstSeqInWindow, lastSeq, frames, gaps, peak, cEntryTotal, cNoPcmTotal,
+                ApexHaptics.get().statusLine());
         windowStartMs = now;
         count = 0; frames = 0; peak = 0; gaps = 0;
         firstSeqInWindow = lastSeq + 1;

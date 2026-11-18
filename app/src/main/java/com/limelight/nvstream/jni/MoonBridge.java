@@ -282,8 +282,8 @@ public class MoonBridge {
     }
 
     // ARBS A1-1: log-only callbacks (no output to any device)
-    public static void bridgeClControllerHaptics(short controllerNumber, int sequence, short frames, short peak, short[] pcm) {
-        com.limelight.arbs.ArbsFeedbackLog.onHaptics(controllerNumber, sequence, frames, peak);
+    public static void bridgeClControllerHaptics(short controllerNumber, int sequence, short frames, short peak, short[] pcm, int cEntryTotal, int cNoPcmTotal) {
+        com.limelight.arbs.ArbsFeedbackLog.onHaptics(controllerNumber, sequence, frames, peak, cEntryTotal, cNoPcmTotal);
         // ARBS A1-2: PCM -> APEX grip (non-blocking: filter + queue only). Never let an exception reach JNI.
         if (pcm != null) {
             try {

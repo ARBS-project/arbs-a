@@ -1101,8 +1101,18 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
     private boolean arbsBuiltinSuppressedLogged;
 
+    // ARBS A1-2b: the APEX is not reported (arrival or input) before the stream is live, because an arrival sent before
+    // connectionStarted left the host without cap 0x8000 (EA-A1-U-02). It is reported once at session start.
+    private volatile boolean arbsStreamLive;
+
+    public void arbsSessionEnded() {
+        arbsStreamLive = false;
+    }
+
     /** Called when the stream starts: reports the APEX to the host without waiting for its first input event. */
     public void arbsSessionStarted() {
+        arbsStreamLive = true;
+        com.limelight.arbs.ArbsLog.i("APEX 도착 보고 시작(연결 시작 이후)");
         for (int i = 0; i < usbDeviceContexts.size(); i++) {
             UsbDeviceContext c = usbDeviceContexts.valueAt(i);
             if (c.device instanceof ApexController) {
@@ -1252,6 +1262,10 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
     }
 
     private void sendControllerInputPacket(GenericControllerContext originalContext) {
+        if (!arbsStreamLive && originalContext instanceof UsbDeviceContext
+                && ((UsbDeviceContext) originalContext).device instanceof ApexController) {
+            return; // not live yet: no number assignment, no arrival, no input
+        }
         if (originalContext instanceof InputDeviceContext && !originalContext.external && arbsApexPriority()) {
             if (!arbsBuiltinSuppressedLogged) {
                 arbsBuiltinSuppressedLogged = true;
@@ -2892,6 +2906,14 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         context.inputMap = buttonFlags;
 
         sendControllerInputPacket(context);
+
+        if (context instanceof UsbDeviceContext && ((UsbDeviceContext) context).device instanceof ApexController
+                && ((ApexController) ((UsbDeviceContext) context).device).consumeDiagArm()) {
+            com.limelight.arbs.ArbsLog.i(String.format(java.util.Locale.US,
+                    "입력진단 호스트값 num=%d live=%s LT=%d RT=%d buttons=0x%X LS=(%d,%d) RS=(%d,%d)",
+                    context.controllerNumber, arbsStreamLive, context.leftTrigger & 0xFF, context.rightTrigger & 0xFF,
+                    context.inputMap, context.leftStickX, context.leftStickY, context.rightStickX, context.rightStickY));
+        }
     }
 
     @Override
@@ -3363,8 +3385,10 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             if (device instanceof ApexController) {
                 com.limelight.arbs.ApexHaptics.get().setControllerNumber(controllerNumber);
             }
-            conn.sendControllerArrivalEvent((byte)controllerNumber, getActiveControllerMask(),
+            int arbsRc = conn.sendControllerArrivalEvent((byte)controllerNumber, getActiveControllerMask(),
                     device.getType(), device.getSupportedButtonFlags(), device.getCapabilities());
+            // ARBS A1-2b: common-c returns -2 (silently dropped, no queue/retry) if the input stream is not initialized yet
+            com.limelight.arbs.ArbsLog.i("도착 이벤트 송신 결과 rc=" + arbsRc + " (0=성공, -2=입력 스트림 미초기화로 폐기) live=" + arbsStreamLive);
         }
     }
 }

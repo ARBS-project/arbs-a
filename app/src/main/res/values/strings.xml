@@ -235,6 +235,8 @@
     <string name="summary_arbs_haptics_test">Test only: tells the host this controller is a PlayStation pad with PCM haptics so the host sends haptics. They are only logged, never output. Off = normal behavior.</string>
     <string name="title_arbs_apex_first">APEX first (A1-2)</string>
     <string name="summary_arbs_apex_first">When a Flydigi APEX 6 dongle is connected, it becomes controller 1 and the built-in pad is not reported to the host.</string>
+    <string name="title_arbs_input_diag">APEX input diagnostic log</string>
+    <string name="summary_arbs_input_diag">Log raw IF0 reports (changes only, max 20 lines/s) with parsed values and the values sent to the host. Default off.</string>
     <string name="title_arbs_apex_amp">APEX grip haptics strength</string>
     <string name="summary_arbs_apex_amp">Maximum grip amplitude (hard limit 60 of 127).</string>
     <string-array name="arbs_apex_amp_names">

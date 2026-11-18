@@ -132,6 +132,7 @@ public class PreferenceConfiguration {
     public boolean smallIconMode, multiController, usbDriver, flipFaceButtons;
     public boolean arbsHapticsTest; // ARBS A1-1
     public boolean arbsApexFirst = true; // ARBS A1-2
+    public boolean arbsInputDiag; // ARBS A1-2b
     public int arbsApexAmp = 40; // ARBS A1-2 (0..60 of 127)
     public boolean onscreenController;
     public boolean onlyL3R3;
@@ -581,6 +582,7 @@ public class PreferenceConfiguration {
         config.smallIconMode = prefs.getBoolean(SMALL_ICONS_PREF_STRING, getDefaultSmallMode(context));
         config.multiController = prefs.getBoolean(MULTI_CONTROLLER_PREF_STRING, DEFAULT_MULTI_CONTROLLER);
         config.arbsHapticsTest = prefs.getBoolean("checkbox_arbs_haptics_test", false);
+        config.arbsInputDiag = prefs.getBoolean("checkbox_arbs_input_diag", false);
         config.arbsApexFirst = prefs.getBoolean("checkbox_arbs_apex_first", true);
         try {
             config.arbsApexAmp = Math.max(0, Math.min(60, Integer.parseInt(prefs.getString("list_arbs_apex_amp", "40"))));

@@ -185,6 +185,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         com.limelight.arbs.ArbsLog.get(this); // ARBS A1-1
+        com.limelight.binding.input.driver.ApexController.setInputDiag(PreferenceConfiguration.readPreferences(this).arbsInputDiag); // ARBS A1-2b
 
         UiHelper.setLocale(this);
 
@@ -2269,6 +2270,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private void stopConnection() {
         // ARBS A1-2: stop APEX output before anything else (stop sequence on IF2)
         com.limelight.arbs.ApexHaptics.get().onSessionEnd("stopConnection");
+        if (controllerHandler != null) {
+            controllerHandler.arbsSessionEnded();
+        }
         if (connecting || connected) {
             connecting = connected = false;
             updatePipAutoEnter();

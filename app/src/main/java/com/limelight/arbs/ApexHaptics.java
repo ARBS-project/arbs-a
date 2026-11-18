@@ -173,15 +173,19 @@ public final class ApexHaptics {
 
     /** PCM 콜백(제어 수신 스레드)에서 호출. 블로킹 없음: 필터 + 큐 push 만. */
     public void onPcm(short controller, int sequence, short[] pcm, int frames) {
+        totCalls++;
         if (!active) {
             winInactive++;
+            totInactive++;
             return;
         }
         int num = apexNumber;
         if (num >= 0 && (controller & 0xFFFF) != num) {
             winForeign++;
+            totForeign++;
             return;
         }
+        totDelivered++;
         if (haveSeq && sequence != lastSeq + 1) {
             pipe.resetFilter();
             winGaps++;
@@ -191,6 +195,15 @@ public final class ApexHaptics {
         lastPcmNs = System.nanoTime();
         winPackets++;
         pipe.process(pcm, frames);
+    }
+
+    // ARBS A1-2b: 누계(콜백 스레드가 쓰고 로그 스레드가 읽음 - 통계용이라 근사치 허용)
+    private volatile long totCalls, totDelivered, totInactive, totForeign;
+
+    /** 1초 햅틱 요약에 붙는 엔진 상태: 상태/활성/사용자정지/번호/onPcm 누계. */
+    public String statusLine() {
+        return String.format(Locale.US, "엔진=%s 활성=%s 사용자정지=%s APEX번호=%d onPcm호출=%d 전달=%d 비활성폐기=%d 타컨트롤러=%d",
+                state, active, userStopped, apexNumber, totCalls, totDelivered, totInactive, totForeign);
     }
 
     // ---------------------------------------------------------------- 엔진 스레드

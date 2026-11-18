@@ -26,6 +26,25 @@ public class ApexController extends Xbox360Controller {
     public static final int VID = 0x37D7;
     public static final int PID = 0x2502;
 
+    /** ARBS A1-2b: input diagnostic log toggle (settings; default off). */
+    private static volatile boolean inputDiag;
+
+    public static void setInputDiag(boolean on) { inputDiag = on; }
+
+    public static boolean isInputDiag() { return inputDiag; }
+
+    private long diagWindowMs;
+    private int diagLines;
+    private byte[] diagLastRaw;
+    private volatile boolean diagArmed;
+
+    /** True once after a handleRead() that logged its raw/parsed line; ControllerHandler then logs the values it sent to the host. */
+    public boolean consumeDiagArm() {
+        boolean a = diagArmed;
+        diagArmed = false;
+        return a;
+    }
+
     private int rawLogged;
     private byte[] lastRaw;
     private int rumbleLogged;
@@ -101,7 +120,37 @@ public class ApexController extends Xbox360Controller {
                 ArbsLog.i("APEX 입력 리포트 샘플[" + rawLogged + "] len=" + n + " " + ApexProtocol.hex(raw, Math.min(n, 24)));
             }
         }
-        return super.handleRead(buffer);
+        boolean res = super.handleRead(buffer);
+        if (inputDiag) {
+            diagnose(buffer, n);
+        }
+        return res;
+    }
+
+    private void diagnose(ByteBuffer buffer, int n) {
+        byte[] raw = new byte[n];
+        buffer.duplicate().position(0);
+        ByteBuffer d = buffer.duplicate();
+        d.position(0);
+        d.get(raw, 0, Math.min(n, d.remaining()));
+        if (diagLastRaw != null && Arrays.equals(diagLastRaw, raw)) {
+            return;
+        }
+        diagLastRaw = raw;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - diagWindowMs >= 1000) {
+            diagWindowMs = now;
+            diagLines = 0;
+        }
+        if (diagLines >= 20) {
+            return;
+        }
+        diagLines++;
+        diagArmed = true;
+        ArbsLog.i(String.format(java.util.Locale.US,
+                "입력진단 raw[%d]=%s | 파싱 LT=%.3f RT=%.3f buttons=0x%X LS=(%.2f,%.2f) RS=(%.2f,%.2f)",
+                n, ApexProtocol.hex(raw, Math.min(n, 24)), leftTrigger, rightTrigger, buttonFlags,
+                leftStickX, leftStickY, rightStickX, rightStickY));
     }
 
     @Override

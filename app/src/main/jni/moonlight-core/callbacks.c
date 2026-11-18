@@ -104,7 +104,7 @@ Java_com_limelight_nvstream_jni_MoonBridge_init(JNIEnv *env, jclass clazz) {
     BridgeClRumbleTriggersMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClRumbleTriggers", "(SSS)V");
     BridgeClSetMotionEventStateMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClSetMotionEventState", "(SBS)V");
     BridgeClSetControllerLEDMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClSetControllerLED", "(SBBB)V");
-    BridgeClControllerHapticsMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClControllerHaptics", "(SISS[S)V");
+    BridgeClControllerHapticsMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClControllerHaptics", "(SISS[SII)V");
     BridgeClSetAdaptiveTriggersMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClSetAdaptiveTriggers", "(SBBB[B[B)V");
 }
 
@@ -395,8 +395,12 @@ void BridgeClSetControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, u
 
 // ARBS A1-1: PCM haptics callback (control receive thread, must not block). Log only: reads the borrowed
 // buffer once to compute the peak amplitude, calls a primitive-only Java method, retains nothing.
+static volatile uint32_t ArbsCbEntryCount; // ARBS A1-2b: callback entries seen by C (cumulative)
+static volatile uint32_t ArbsCbNoPcmCount;  // ARBS A1-2b: calls where no PCM array could be passed
+
 void BridgeClControllerHaptics(uint16_t controllerNumber, uint32_t sequence, const uint8_t* pcm, uint16_t frames) {
     JNIEnv* env = GetThreadEnv();
+    ArbsCbEntryCount++;
     int peak = 0;
     const int16_t* samples = (const int16_t*)pcm; // 48 kHz S16LE stereo, little-endian host (ARM/x86)
     for (unsigned i = 0; i < (unsigned)frames * 2; i++) {
@@ -414,8 +418,12 @@ void BridgeClControllerHaptics(uint16_t controllerNumber, uint32_t sequence, con
             (*env)->SetShortArrayRegion(env, arr, 0, (jsize)frames * 2, (const jshort*)samples);
         }
     }
+    if (arr == NULL) {
+        ArbsCbNoPcmCount++;
+    }
     (*env)->CallStaticVoidMethod(env, GlobalBridgeClass, BridgeClControllerHapticsMethod,
-                                 (jshort)controllerNumber, (jint)sequence, (jshort)frames, (jshort)peak, arr);
+                                 (jshort)controllerNumber, (jint)sequence, (jshort)frames, (jshort)peak, arr,
+                                 (jint)ArbsCbEntryCount, (jint)ArbsCbNoPcmCount);
     if (arr != NULL) {
         (*env)->DeleteLocalRef(env, arr);
     }
