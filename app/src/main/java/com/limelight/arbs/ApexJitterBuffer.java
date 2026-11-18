@@ -33,6 +33,15 @@ public final class ApexJitterBuffer {
     }
 
     private int target = MIN_TARGET_MS;
+    private int fixedMs;
+
+    /** A1-3c: 0 = 자동(적응), 16..80 = 고정 지연(적응·감쇠 없음, 언더런 시 재충전은 유지). */
+    public void setFixed(int ms) {
+        fixedMs = ms <= 0 ? 0 : Math.max(MIN_TARGET_MS, Math.min(MAX_TARGET_MS, ms));
+        if (fixedMs > 0) target = fixedMs;
+    }
+
+    public int getFixed() { return fixedMs; }
     private boolean playing;
     private long lastUnderrunNs;
     private long lastDecayNs;
@@ -61,7 +70,7 @@ public final class ApexJitterBuffer {
         out.underrun = false;
         if (nowNs - lastDecayNs >= DECAY_NS) {
             lastDecayNs = nowNs;
-            if (nowNs - lastUnderrunNs >= DECAY_NS && target > MIN_TARGET_MS) target--;
+            if (fixedMs == 0 && nowNs - lastUnderrunNs >= DECAY_NS && target > MIN_TARGET_MS) target--;
         }
         if (queue > target + OVERFLOW_MS) {
             out.trimTo = target + KEEP_MARGIN_MS;
@@ -77,7 +86,7 @@ public final class ApexJitterBuffer {
             out.underrun = true;
             underrunTotal++;
             lastUnderrunNs = nowNs;
-            target = Math.min(MAX_TARGET_MS, target + STEP_UP_MS);
+            if (fixedMs == 0) target = Math.min(MAX_TARGET_MS, target + STEP_UP_MS);
             return out;
         }
         out.play = true;

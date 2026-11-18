@@ -257,6 +257,42 @@
         <item>50</item>
         <item>60</item>
     </string-array>
+    <string name="title_arbs_apex_gain">APEX haptics gain</string>
+    <string name="summary_arbs_apex_gain">Gain before the soft limiter (the strength limit above is never exceeded). Default 1.0.</string>
+    <string-array name="arbs_apex_gain_names">
+        <item>0.5</item>
+        <item>0.75</item>
+        <item>1.0 (default)</item>
+        <item>1.5</item>
+        <item>2.0</item>
+    </string-array>
+    <string-array name="arbs_apex_gain_values">
+        <item>0.5</item>
+        <item>0.75</item>
+        <item>1.0</item>
+        <item>1.5</item>
+        <item>2.0</item>
+    </string-array>
+    <string name="title_arbs_jitter_fixed">Jitter buffer fixed delay</string>
+    <string name="summary_arbs_jitter_fixed">0 = automatic (adaptive, 16-80 ms). Otherwise a fixed delay in ms.</string>
+    <string-array name="arbs_jitter_fixed_names">
+        <item>Automatic (default)</item>
+        <item>16 ms</item>
+        <item>24 ms</item>
+        <item>32 ms</item>
+        <item>48 ms</item>
+        <item>64 ms</item>
+        <item>80 ms</item>
+    </string-array>
+    <string-array name="arbs_jitter_fixed_values">
+        <item>0</item>
+        <item>16</item>
+        <item>24</item>
+        <item>32</item>
+        <item>48</item>
+        <item>64</item>
+        <item>80</item>
+    </string-array>
     <string name="title_arbs_apex_status">APEX status</string>
     <string name="summary_arbs_apex_status">NONE (dongle not connected)</string>
     <string name="title_arbs_open_log">ARBS log</string>

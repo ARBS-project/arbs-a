@@ -61,7 +61,7 @@ public class ApexPcmPipelineTest {
         ApexPcmPipeline p = new ApexPcmPipeline();
         p.setCap(60);
         int[] pk = peaks(p, 100.0, 10000, true, true);
-        double expect = 10000.0 / 32768 * 127;       // 38.75
+        double expect = 10000.0 / 32768 * 60;        // 18.3 (A1-3c: 비례 스케일 x 상한 60)
         assertTrue("100Hz peak=" + pk[0], Math.abs(pk[0] - expect) <= 2.0);
         assertTrue(Math.abs(pk[1] - expect) <= 2.0);
     }
@@ -71,7 +71,7 @@ public class ApexPcmPipelineTest {
         ApexPcmPipeline p = new ApexPcmPipeline();
         p.setCap(60);
         int[] pk = peaks(p, 300.0, 10000, true, true);
-        double expect = 10000.0 / 32768 * 127;
+        double expect = 10000.0 / 32768 * 60;
         assertTrue("300Hz peak=" + pk[0], pk[0] >= expect * 0.7);
     }
 
@@ -91,28 +91,33 @@ public class ApexPcmPipelineTest {
         ApexPcmPipeline p = new ApexPcmPipeline();
         p.setCap(60);
         int[] pk = peaks(p, 150.0, 10000, true, false);
-        assertTrue(pk[0] >= 30);
+        assertTrue(pk[0] >= 15);
         assertEquals(0, pk[1]);
         p = new ApexPcmPipeline();
         p.setCap(60);
         pk = peaks(p, 150.0, 10000, false, true);
         assertEquals(0, pk[0]);
-        assertTrue(pk[1] >= 30);
+        assertTrue(pk[1] >= 15);
     }
 
     @Test
     public void scaleFormulaAndCaps() {
         ApexPcmPipeline p = new ApexPcmPipeline();
         p.setCap(60);
-        assertEquals(19, p.scale(5000f));                // round(5000/32768*127)
-        assertEquals(32, p.scale(8192f));                // 31.75 -> 32
-        assertEquals(-19, p.scale(-5000f));
-        assertEquals(60, p.scale(32767f));               // 127 -> 하드 상한 60
-        assertEquals(-60, p.scale(-32768f));
+        // A1-3c: out = s16/32768 x 상한(비례 축소), 80% 아래는 선형
+        assertEquals(9, p.scale(5000f));                 // 5000/32768*60 = 9.16
+        assertEquals(15, p.scale(8192f));                // 0.25*60
+        assertEquals(-9, p.scale(-5000f));
+        assertEquals(30, p.scale(16384f));               // 0.5*60 = 30 (< 80% = 48)
+        int full = p.scale(32767f);                      // 풀스케일 -> 상한 부근(리미터)
+        assertTrue("full=" + full, full >= 55 && full <= 60);     // tanh 리미터: 약 57
+        assertEquals(-full, p.scale(-32767f));
+        assertTrue(Math.abs(p.scale(-32768f)) <= 60);
         p.setCap(40);
-        assertEquals(40, p.scale(32767f));
-        assertEquals(-40, p.scale(-32768f));
-        assertEquals(19, p.scale(5000f));                // 상한 아래는 그대로
+        assertEquals(20, p.scale(16384f));               // 비례: 0.5*40
+        int f40 = p.scale(32767f);
+        assertTrue("f40=" + f40, f40 >= 36 && f40 <= 40);
+        assertEquals(6, p.scale(5000f));                 // 5000/32768*40 = 6.1
         p.setCap(0);
         assertEquals(0, p.scale(32767f));
     }
@@ -122,7 +127,7 @@ public class ApexPcmPipelineTest {
         ApexPcmPipeline p = new ApexPcmPipeline();
         p.setCap(127);
         assertEquals(60, p.getCap());
-        assertEquals(60, p.scale(32767f));
+        assertTrue(p.scale(32767f) <= 60);
         p.setCap(-5);
         assertEquals(0, p.getCap());
         p.setCap(61);
@@ -134,9 +139,12 @@ public class ApexPcmPipelineTest {
         ApexPcmPipeline p = new ApexPcmPipeline();
         p.setCap(60);
         p.setGain(0.5f);
-        assertEquals(16, p.scale(8192f));                // 31.75*0.5 = 15.9 -> 16
+        assertEquals(8, p.scale(8192f));                 // 15*0.5 = 7.5 -> 8
         p.setGain(2.0f);
-        assertEquals(60, p.scale(32767f));               // 이득을 키워도 하드 상한
+        assertEquals(30, p.scale(8192f));                // 15*2 = 30 (< 80%)
+        assertTrue(p.scale(32767f) <= 60);               // 이득을 키워도 하드 상한
+        p.setGain(100f);
+        assertEquals(4.0f, p.getGain(), 1e-6);
     }
 
     @Test
@@ -178,7 +186,63 @@ public class ApexPcmPipelineTest {
         short[] dc = new short[960 * 2];
         java.util.Arrays.fill(dc, (short) 20000);
         p.process(dc, 960);
-        assertEquals(60, p.getAndResetPeak());          // 20000/32768*127=77 -> 60
+        int pk = p.getAndResetPeak();                    // 20000/32768*60 = 36.6, 필터 스텝 오버슈트(Gibbs ~9%) 허용
+        assertTrue("peak=" + pk, pk >= 37 && pk <= 41);
         assertEquals(0, p.getAndResetPeak());
+    }
+    @Test
+    public void limiterNeverExceedsCapForAnyInputAndGain() {
+        for (int cap : new int[]{10, 40, 60}) {
+            for (float g : new float[]{0.5f, 1.0f, 2.0f, 4.0f}) {
+                ApexPcmPipeline p = new ApexPcmPipeline();
+                p.setCap(cap);
+                p.setGain(g);
+                for (int v = -32768; v <= 32767; v += 97) {
+                    int o = p.scale(v);
+                    assertTrue("cap=" + cap + " g=" + g + " in=" + v + " out=" + o, Math.abs(o) <= cap);
+                }
+            }
+        }
+    }
+
+    @Test
+    public void smallSignalsStayProportionalBelowKnee() {
+        ApexPcmPipeline p = new ApexPcmPipeline();
+        p.setCap(60);
+        // 80% 지점(= 입력 0.8 FS) 아래는 정확히 선형: out = in/32768*60
+        for (int v = 0; v <= 26000; v += 1300) {
+            assertEquals("in=" + v, Math.round(v / 32768.0 * 60), p.scale(v));
+        }
+        // 두 배 신호는 두 배 출력
+        assertEquals(2 * p.scale(3000f), p.scale(6000f), 1);
+    }
+
+    @Test
+    public void limiterIsMonotonicAndSmoothAboveKnee() {
+        ApexPcmPipeline p = new ApexPcmPipeline();
+        p.setCap(60);
+        int prev = -1;
+        for (int v = 0; v <= 32767; v += 64) {
+            int o = p.scale(v);
+            assertTrue("monotonic at " + v, o >= prev);
+            prev = o;
+        }
+    }
+
+    @Test
+    public void levelStatsReportLimiterAndRms() {
+        ApexPcmPipeline p = new ApexPcmPipeline();
+        p.setCap(60);
+        for (int i = 0; i < 100; i++) p.scale(10000f);     // 작은 신호: 리미터 없음
+        double[] a = p.getAndResetLevels();
+        assertEquals(100, a[0], 0);
+        assertEquals(0, a[1], 0);                          // 리미터 0%
+        assertEquals(0, a[2], 0);
+        assertEquals(30.5, a[3], 0.1);                     // 10000/32768
+        assertEquals(18, a[4], 0.5);                       // 출력 RMS
+        for (int i = 0; i < 100; i++) p.scale(32767f);     // 풀스케일: 리미터 동작
+        double[] b = p.getAndResetLevels();
+        assertEquals(100, b[1], 0);
+        assertEquals(0, p.getAndResetLevels()[0], 0);      // 초기화됨
     }
 }

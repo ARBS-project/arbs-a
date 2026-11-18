@@ -51,7 +51,10 @@ public final class ApexPcmPipeline {
         return h;
     }
 
-    public synchronized void setGain(float g) { gain = g; }
+    /** 이득 G(0.5~2.0 권장). 0.1..4.0 으로 제한. 상한(리미터)은 항상 적용된다. */
+    public synchronized void setGain(float g) { gain = Math.max(0.1f, Math.min(4.0f, g)); }
+
+    public synchronized float getGain() { return gain; }
 
     /** 사용자 상한(0..60). 하드 상한 60 을 넘을 수 없다. */
     public synchronized void setCap(int c) { cap = Math.max(0, Math.min(ApexProtocol.MAX_AMPLITUDE, c)); }
@@ -115,11 +118,50 @@ public final class ApexPcmPipeline {
         return outs;
     }
 
-    /** s16 영역 값 -> int8 그립 샘플(상한 적용). */
+    /** 부드러운 리미터 시작점(상한 대비). A1-3c. */
+    public static final double KNEE = 0.8;
+
+    // A1-3c 1초 통계(스케일 호출마다 갱신, synchronized)
+    private long stN, stLimited, stClipped;
+    private double stInSq, stOutSq;
+
+    /**
+     * s16 영역 값 -> 그립 샘플. A1-3c: out = s16/32768 x 상한(슬라이더, 최대 60) x 이득 G, 비례 축소.
+     * 상한의 {@link #KNEE}(80%)부터 tanh 로 완만히 눌러 상한을 넘지 않는다(풀스케일 입력 = 상한 부근).
+     */
     public synchronized int scale(float y) {
         int lim = Math.min(cap, ApexProtocol.MAX_AMPLITUDE);
-        int v = Math.round(y / 32768f * gain * 127f);
-        return Math.max(-lim, Math.min(lim, v));
+        double in = y / 32768.0;
+        double x = in * lim * gain;
+        double ax = Math.abs(x);
+        double knee = KNEE * lim;
+        boolean limited = false;
+        double o = ax;
+        if (lim > 0 && ax > knee) {
+            double room = lim - knee;
+            o = knee + room * Math.tanh((ax - knee) / room);
+            limited = true;
+        }
+        int v = (int) Math.round(x < 0 ? -o : o);
+        v = Math.max(-lim, Math.min(lim, v));
+        stN++;
+        if (limited) stLimited++;
+        if (lim > 0 && Math.abs(v) >= lim) stClipped++;
+        stInSq += in * in;
+        stOutSq += (double) v * v;
+        return v;
+    }
+
+    /** [샘플 수, 리미터 동작 %, 상한 도달 %, 입력 RMS %FS, 출력 RMS(단위), 출력 RMS 상한 대비 %] 후 초기화. */
+    public synchronized double[] getAndResetLevels() {
+        double n = Math.max(1, stN);
+        int lim = Math.min(cap, ApexProtocol.MAX_AMPLITUDE);
+        double outRms = Math.sqrt(stOutSq / n);
+        double[] r = {stN, 100.0 * stLimited / n, 100.0 * stClipped / n, 100.0 * Math.sqrt(stInSq / n),
+                outRms, lim > 0 ? 100.0 * outRms / lim : 0};
+        stN = stLimited = stClipped = 0;
+        stInSq = stOutSq = 0;
+        return r;
     }
 
     private void push(int l, int r) {

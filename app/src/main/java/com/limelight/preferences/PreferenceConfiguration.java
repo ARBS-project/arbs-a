@@ -134,6 +134,8 @@ public class PreferenceConfiguration {
     public boolean arbsApexFirst = true; // ARBS A1-2
     public boolean arbsInputDiag; // ARBS A1-2b
     public int arbsApexAmp = 40; // ARBS A1-2 (0..60 of 127)
+    public float arbsApexGain = 1.0f; // ARBS A1-3c (0.5..2.0)
+    public int arbsJitterFixed = 0; // ARBS A1-3c (0 = auto, 16..80 fixed ms)
     public boolean onscreenController;
     public boolean onlyL3R3;
     public boolean showGuideButton;
@@ -588,6 +590,17 @@ public class PreferenceConfiguration {
             config.arbsApexAmp = Math.max(0, Math.min(60, Integer.parseInt(prefs.getString("list_arbs_apex_amp", "40"))));
         } catch (NumberFormatException e) {
             config.arbsApexAmp = 40;
+        }
+        try {
+            config.arbsApexGain = Math.max(0.5f, Math.min(2.0f, Float.parseFloat(prefs.getString("list_arbs_apex_gain", "1.0"))));
+        } catch (NumberFormatException e) {
+            config.arbsApexGain = 1.0f;
+        }
+        try {
+            int jf = Integer.parseInt(prefs.getString("list_arbs_jitter_fixed", "0"));
+            config.arbsJitterFixed = jf <= 0 ? 0 : Math.max(16, Math.min(80, jf));
+        } catch (NumberFormatException e) {
+            config.arbsJitterFixed = 0;
         }
         config.usbDriver = prefs.getBoolean(USB_DRIVER_PREF_SRING, DEFAULT_USB_DRIVER);
         config.onscreenController = prefs.getBoolean(ONSCREEN_CONTROLLER_PREF_STRING, ONSCREEN_CONTROLLER_DEFAULT);

@@ -2512,7 +2512,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 updatePipAutoEnter();
 
                 // ARBS A1-2: start APEX session (enable once) and report the APEX to the host
-                com.limelight.arbs.ApexHaptics.get().onSessionStart(prefConfig.arbsApexAmp);
+                com.limelight.arbs.ApexHaptics.get().onSessionStart(prefConfig.arbsApexAmp, prefConfig.arbsApexGain, prefConfig.arbsJitterFixed);
                 arbsApexUiPoll();
                 if (controllerHandler != null) {
                     controllerHandler.arbsSessionStarted();

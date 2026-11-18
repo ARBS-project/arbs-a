@@ -216,6 +216,20 @@
             android:entries="@array/arbs_apex_amp_names"
             android:entryValues="@array/arbs_apex_amp_values"
             android:defaultValue="40" />
+        <ListPreference
+            android:key="list_arbs_apex_gain"
+            android:title="@string/title_arbs_apex_gain"
+            android:summary="@string/summary_arbs_apex_gain"
+            android:entries="@array/arbs_apex_gain_names"
+            android:entryValues="@array/arbs_apex_gain_values"
+            android:defaultValue="1.0" />
+        <ListPreference
+            android:key="list_arbs_jitter_fixed"
+            android:title="@string/title_arbs_jitter_fixed"
+            android:summary="@string/summary_arbs_jitter_fixed"
+            android:entries="@array/arbs_jitter_fixed_names"
+            android:entryValues="@array/arbs_jitter_fixed_values"
+            android:defaultValue="0" />
         <Preference
             android:key="arbs_apex_status"
             android:title="@string/title_arbs_apex_status"

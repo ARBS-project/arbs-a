@@ -1410,6 +1410,24 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                 perfListener.onPerfUpdate(sb.toString());
             }
 
+            // ARBS A1-3c: Moonlight basic stats once a second into the ARBS log (independent of the overlay setting)
+            try {
+                VideoStats ab = new VideoStats();
+                ab.add(lastWindowVideoStats);
+                ab.add(activeWindowVideoStats);
+                if (ab.totalFramesReceived > 0 && ab.totalFrames > 0) {
+                    VideoStatsFps abFps = ab.getFps();
+                    long abRtt = MoonBridge.getEstimatedRttInfo();
+                    float abHost = ab.framesWithHostProcessingLatency > 0
+                            ? (float) ab.totalHostProcessingLatency / 10 / ab.framesWithHostProcessingLatency : -1f;
+                    com.limelight.arbs.ArbsLog.i(String.format(java.util.Locale.US,
+                            "Moonlight 통계: 네트워크RTT=%dms 분산=%dms 디코드평균=%.1fms 수신fps=%.1f 렌더fps=%.1f 프레임손실=%.1f%% 호스트처리평균=%s",
+                            (int) (abRtt >> 32), (int) abRtt, (float) ab.decoderTimeMs / ab.totalFramesReceived,
+                            abFps.receivedFps, abFps.renderedFps, (float) ab.framesLost / ab.totalFrames * 100,
+                            abHost < 0 ? "n/a" : String.format(java.util.Locale.US, "%.1fms", abHost)));
+                }
+            } catch (Throwable ignored) { }
+
             globalVideoStats.add(activeWindowVideoStats);
             lastWindowVideoStats.copy(activeWindowVideoStats);
             activeWindowVideoStats.clear();

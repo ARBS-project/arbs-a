@@ -121,4 +121,25 @@ public class ApexJitterBufferTest {
         assertTrue("plays=" + plays, plays >= 220);
         assertTrue("underruns=" + underruns, underruns <= 2);
     }
+
+    @Test
+    public void fixedDelayNeverAdaptsButStillRefills() {
+        ApexJitterBuffer b = new ApexJitterBuffer();
+        b.setFixed(48);
+        assertEquals(48, b.getTarget());
+        b.reset(0);
+        assertFalse(d(b, 47, 0).play);
+        assertTrue(d(b, 48, 8).play);
+        ApexJitterBuffer.Result r = d(b, 0, 16);            // 언더런
+        assertTrue(r.underrun);
+        assertEquals("fixed: no step up", 48, b.getTarget());
+        for (long t = 1000; t < 20000; t += 1000) d(b, 60, t);
+        assertEquals("fixed: no decay", 48, b.getTarget());
+        b.setFixed(5);                                      // 16 미만은 16 으로
+        assertEquals(16, b.getTarget());
+        b.setFixed(500);
+        assertEquals(80, b.getTarget());
+        b.setFixed(0);
+        assertEquals(0, b.getFixed());
+    }
 }

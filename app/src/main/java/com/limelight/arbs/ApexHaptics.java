@@ -38,6 +38,9 @@ public final class ApexHaptics {
     public final ApexPcmPipeline pipe = new ApexPcmPipeline();
     /** ARBS A1-3b: 외부망 지터 버퍼(적응형 재생 지연). 큐 용량은 버퍼 요구량으로 확장. */
     private final ApexJitterBuffer jitter = new ApexJitterBuffer();
+    /** A1-3c: PCM 도착 간격 통계. */
+    private final ApexArrivalStats arrival = new ApexArrivalStats();
+    private final ApexArrivalStats.Snapshot arrSnap = new ApexArrivalStats.Snapshot();
     { pipe.setLimit(ApexJitterBuffer.REQUIRED_QUEUE); }
     /** ARBS A1-3: 일반 진동 -> 그립 사인(PCM 비무음 채널이 우선). */
     public final ApexRumbleSynth rumble = new ApexRumbleSynth();
@@ -181,11 +184,15 @@ public final class ApexHaptics {
     private volatile String stopReason = "";
 
     /** 세션 시작(connectionStarted). [cap] = 설정 슬라이더(0..60). */
-    public void onSessionStart(int cap) {
+    public void onSessionStart(int cap, float gain, int jitterFixedMs) {
         pipe.setCap(cap);
+        pipe.setGain(gain);
+        jitter.setFixed(jitterFixedMs);
+        arrival.reset();
         userStopped = false;
         sessionRunning = true;
-        ArbsLog.i(String.format(Locale.US, "APEX 세션 시작: 상태=%s 진폭 상한=%d/127(하드 상한 %d)", state, pipe.getCap(), ApexProtocol.MAX_AMPLITUDE));
+        ArbsLog.i(String.format(Locale.US, "APEX 세션 시작: 상태=%s 진폭 상한=%d(하드 상한 %d) 이득 G=%.2f 지터버퍼=%s",
+                state, pipe.getCap(), ApexProtocol.MAX_AMPLITUDE, gain, jitterFixedMs > 0 ? ("고정 " + jitterFixedMs + "ms") : "자동"));
     }
 
     public void onSessionEnd(String reason) {
@@ -245,6 +252,7 @@ public final class ApexHaptics {
     /** PCM 콜백(제어 수신 스레드)에서 호출. 블로킹 없음: 필터 + 큐 push 만. */
     public void onPcm(short controller, int sequence, short[] pcm, int frames) {
         totCalls++;
+        arrival.add(System.nanoTime());
         if (!active) {
             winInactive++;
             totInactive++;
@@ -448,6 +456,19 @@ public final class ApexHaptics {
                 avgMs(xferSum, xferN), xferMax / 1e6, avgMs(rxSum, rxN), rxMax / 1e6, avgMs(sleepErrSum, sleepErrN), sleepErrMax / 1e6,
                 missed, resyncs, catchups, totRumbleCalls, rumble.low8(), rumble.high8(),
                 jitter.getTarget(), jitter.getAndResetUnderruns(), jitter.getAndResetTrims()));
+        // A1-3c: 도착 간격 / 레벨(클리핑) / 추가 지연 추정
+        arrival.snapshotAndReset(System.nanoTime(), arrSnap);
+        double[] lv = pipe.getAndResetLevels();
+        double filterMs = (ApexPcmPipeline.TAPS - 1) / 2.0 / ApexPcmPipeline.SAMPLE_RATE * 1000.0;
+        int q = pipe.queueSize();
+        double est = filterMs + jitter.getTarget() + q + ApexProtocol.FRAME_MS;
+        ArbsLog.i(String.format(Locale.US,
+                "APEX 레벨: 리미터동작 %.1f%% 상한도달 %.1f%% 입력RMS %.1f%%FS 출력RMS %.1f(상한 대비 %.0f%%) 상한=%d 이득=%.2f | "
+                        + "PCM도착간격 평균/p95/최대=%.1f/%.1f/%.1fms 최대무수신=%.1fms | "
+                        + "ARBS추가지연추정≈%.1fms (필터 %.1f + 버퍼목표 %d%s + 큐 %d + 프레임 %d; 목표와 큐는 일부 겹쳐 상한 추정)",
+                lv[1], lv[2], lv[3], lv[4], lv[5], pipe.getCap(), pipe.getGain(),
+                arrSnap.avgMs, arrSnap.p95Ms, arrSnap.maxMs, arrSnap.maxSilenceMs,
+                est, filterMs, jitter.getTarget(), jitter.getFixed() > 0 ? "(고정)" : "(자동)", q, ApexProtocol.FRAME_MS));
         resetWindow();
     }
 
