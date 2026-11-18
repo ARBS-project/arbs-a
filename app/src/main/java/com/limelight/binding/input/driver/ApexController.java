@@ -111,6 +111,7 @@ public class ApexController extends Xbox360Controller {
     @Override
     protected boolean handleRead(ByteBuffer buffer) {
         int n = buffer.remaining();
+        ApexHaptics.get().onInputReport();   // A1-3b: 첫 입력 후 GetInfo / 입력 재개 시 재시도
         if (rawLogged < 3) {
             byte[] raw = new byte[n];
             buffer.duplicate().get(raw);

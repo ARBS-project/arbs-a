@@ -1067,8 +1067,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     private void arbsShowApexButton() {
         com.limelight.arbs.ApexHaptics.State st = com.limelight.arbs.ApexHaptics.get().getState();
-        if (arbsApexStopButton != null || st == com.limelight.arbs.ApexHaptics.State.NONE
-                || st == com.limelight.arbs.ApexHaptics.State.UNSUPPORTED) {
+        if (arbsApexStopButton != null || st != com.limelight.arbs.ApexHaptics.State.READY) {
             return;
         }
         final android.widget.Button b = new android.widget.Button(this);
@@ -1093,6 +1092,56 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         addContentView(b, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
                 android.view.Gravity.TOP | android.view.Gravity.END));
+    }
+
+    // ARBS A1-3b: [APEX 다시 연결] manual retry (shown whenever an APEX dongle was seen, even if not READY)
+    private android.widget.Button arbsApexRetryButton;
+    private boolean arbsUiPolling;
+
+    /** Once a second while the stream is up: show [APEX 다시 연결] once a dongle was seen, and [APEX 정지] once READY. */
+    private void arbsApexUiPoll() {
+        if (arbsUiPolling) {
+            return;
+        }
+        arbsUiPolling = true;
+        final Handler ph = new Handler();
+        ph.post(new Runnable() {
+            @Override
+            public void run() {
+                if (isFinishing() || isDestroyed() || !arbsUiPolling) {
+                    arbsUiPolling = false;
+                    return;
+                }
+                if (com.limelight.arbs.ApexHaptics.get().getState() != com.limelight.arbs.ApexHaptics.State.NONE) {
+                    arbsShowApexRetryButton();
+                    arbsShowApexButton();
+                }
+                ph.postDelayed(this, 1000);
+            }
+        });
+    }
+
+    private void arbsShowApexRetryButton() {
+        if (arbsApexRetryButton != null) {
+            return;
+        }
+        final android.widget.Button b = new android.widget.Button(this);
+        b.setText("APEX 다시 연결");
+        b.setAllCaps(false);
+        b.setAlpha(0.6f);
+        b.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String r = com.limelight.arbs.ApexHaptics.get().manualRetry();
+                Toast.makeText(Game.this, "APEX: " + r, Toast.LENGTH_SHORT).show();
+            }
+        });
+        arbsApexRetryButton = b;
+        android.widget.FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.TOP | android.view.Gravity.END);
+        lp.topMargin = (int) (56 * getResources().getDisplayMetrics().density);
+        addContentView(b, lp);
     }
 
     @Override
@@ -2464,6 +2513,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
                 // ARBS A1-2: start APEX session (enable once) and report the APEX to the host
                 com.limelight.arbs.ApexHaptics.get().onSessionStart(prefConfig.arbsApexAmp);
+                arbsApexUiPoll();
                 if (controllerHandler != null) {
                     controllerHandler.arbsSessionStarted();
                 }

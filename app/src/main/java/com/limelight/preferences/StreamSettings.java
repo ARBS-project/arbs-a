@@ -270,6 +270,20 @@ public class StreamSettings extends Activity {
             return view;
         }
 
+        // ARBS A1-3b: show the current APEX state (NONE / PROBING n/10 / READY / UNSUPPORTED / USER_STOP)
+        private void arbsRefreshApexStatus() {
+            Preference p = findPreference("arbs_apex_status");
+            if (p != null) {
+                p.setSummary(com.limelight.arbs.ApexHaptics.get().statusText());
+            }
+        }
+
+        @Override
+        public void onResume() {
+            super.onResume();
+            arbsRefreshApexStatus();
+        }
+
         @Override
         public void onCreate(Bundle savedInstanceState) {
             super.onCreate(savedInstanceState);
@@ -285,6 +299,7 @@ public class StreamSettings extends Activity {
                     return true;
                 }
             });
+            arbsRefreshApexStatus();
             PreferenceScreen screen = getPreferenceScreen();
 
             // hide on-screen controls category on non touch screen devices

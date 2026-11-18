@@ -36,6 +36,9 @@ public final class ApexHaptics {
     private static final int MAX_RX_LOG = 20;
 
     public final ApexPcmPipeline pipe = new ApexPcmPipeline();
+    /** ARBS A1-3b: 외부망 지터 버퍼(적응형 재생 지연). 큐 용량은 버퍼 요구량으로 확장. */
+    private final ApexJitterBuffer jitter = new ApexJitterBuffer();
+    { pipe.setLimit(ApexJitterBuffer.REQUIRED_QUEUE); }
     /** ARBS A1-3: 일반 진동 -> 그립 사인(PCM 비무음 채널이 우선). */
     public final ApexRumbleSynth rumble = new ApexRumbleSynth();
     private final ApexScheduler sched = new ApexScheduler();
@@ -92,12 +95,62 @@ public final class ApexHaptics {
         conn = c;
         epIn = in;
         epOut = out;
+        policy.resetAll();
+        retryRequested = false;
+        startThread();
+    }
+
+    private void startThread() {
         terminate = false;
         active = false;
         state = State.PROBING;
         thread = new Thread(this::run, "arbs-apex");
         thread.setDaemon(true);
         thread.start();
+    }
+
+    // ---------------------------------------------------------------- A1-3b: 준비 재시도
+
+    private final ApexProbePolicy policy = new ApexProbePolicy();
+    private volatile boolean retryRequested;
+
+    /** ApexController.handleRead 에서 IF0 입력 리포트마다 호출(가벼움). 끊겼다 다시 오면 UNSUPPORTED 재시도. */
+    public void onInputReport() {
+        if (policy.onInput(SystemClock.uptimeMillis())) {
+            retryRequested = true;
+            ArbsLog.i("APEX 입력 리포트 재개 감지 -> 준비 재시도 요청");
+        }
+    }
+
+    /** 스트림 화면 [APEX 다시 연결]: UNSUPPORTED 면 재시도, 엔진 스레드가 죽어 있으면 다시 시작. 결과 문구 반환. */
+    public synchronized String manualRetry() {
+        Thread t = thread;
+        if (t == null || !t.isAlive()) {
+            if (conn == null || epIn == null || epOut == null) {
+                ArbsLog.i("APEX 다시 연결: 동글 미연결(NONE) - 할 수 없음");
+                return "동글 미연결";
+            }
+            policy.begin();
+            retryRequested = false;
+            ArbsLog.i("APEX 다시 연결(수동): 엔진 스레드 재시작");
+            startThread();
+            return "재시작";
+        }
+        if (state == State.UNSUPPORTED && policy.manualRetry()) {
+            retryRequested = true;
+            ArbsLog.i("APEX 다시 연결(수동): 준비 재시도 요청");
+            return "재시도 요청";
+        }
+        ArbsLog.i("APEX 다시 연결: 상태=" + state + " - 재시도 불필요");
+        return "상태 " + state;
+    }
+
+    /** 설정 화면 표시용: NONE / PROBING / READY / UNSUPPORTED / USER_STOP. */
+    public String statusText() {
+        State s = state;
+        if (s == State.READY && userStopped) return "USER_STOP";
+        if (s == State.PROBING) return "PROBING " + policy.attempt() + "/" + ApexProbePolicy.MAX_ATTEMPTS;
+        return s.name();
     }
 
     /** USB 분리/컨트롤러 종료/앱 종료: 활성이었다면 정지 시퀀스를 보낸 뒤 스레드를 끝낸다. connection.close() 전에 호출. */
@@ -109,6 +162,7 @@ public final class ApexHaptics {
         }
         if (t == null) {
             state = State.NONE;
+            conn = null;
             return;
         }
         ArbsLog.i("APEX 엔진 종료 요청: " + reason);
@@ -121,6 +175,7 @@ public final class ApexHaptics {
         }
         state = State.NONE;
         apexNumber = -1;
+        conn = null;
     }
 
     private volatile String stopReason = "";
@@ -232,7 +287,7 @@ public final class ApexHaptics {
 
     private void run() {
         try {
-            if (!probe()) return;
+            if (!probeUntilReady()) return;
             state = State.READY;
             ArbsLog.i("APEX 준비됨(GetInfo 통과). 세션 진행 + 포그라운드일 때 활성화됩니다");
             try {
@@ -246,6 +301,7 @@ public final class ApexHaptics {
             int[] l = new int[8];
             int[] r = new int[8];
             ApexScheduler.Decision dec = new ApexScheduler.Decision();
+            ApexJitterBuffer.Result jr = new ApexJitterBuffer.Result();
             while (!terminate) {
                 boolean want = state == State.READY && sessionRunning && !paused && !userStopped;
                 if (want && !active) {
@@ -255,6 +311,7 @@ public final class ApexHaptics {
                     zeroRun = 0;
                     timeoutLogged = false;
                     statsAt = System.nanoTime();
+                    jitter.reset(statsAt);
                 } else if (!want && active) {
                     deactivate(currentStopReason());
                 }
@@ -284,6 +341,7 @@ public final class ApexHaptics {
                 }
                 if (now - lastPcmNs > NO_PCM_NEUTRAL_MS * 1_000_000L) {
                     if (pipe.queueSize() > 0) pipe.clearQueue();
+                    jitter.reset(now);
                     if (!timeoutLogged && lastPcmNs != 0) {
                         timeoutLogged = true;
                         ArbsLog.i("APEX: PCM 100ms 무수신 -> 중립 프레임");
@@ -295,16 +353,17 @@ public final class ApexHaptics {
                 boolean idle = zeroRun > IDLE_ENTER_FRAMES;
                 int avail = pipe.queueSize();
                 int n = 0;
-                if (avail >= 8 || (avail > 0 && !idle)) {
+                // A1-3b: 지터 버퍼 — 채워질 때까지 대기, 넘치면 오래된 것 폐기, 모자라면 재충전
+                jitter.decide(avail, now, jr);
+                if (jr.trimTo >= 0) pipe.trimTo(jr.trimTo);
+                if (jr.underrun) underruns++;
+                if (jr.play) {
                     n = pipe.pop(l, r, 8);
-                    if (n < 8) {
-                        underruns++;
-                        for (int i = n; i < 8; i++) { l[i] = 0; r[i] = 0; }
-                    }
-                } else {
-                    for (int i = 0; i < 8; i++) { l[i] = 0; r[i] = 0; }
                 }
-                if (catchingUp && n < 8 && avail < 8 && !rumble.isActive()) {
+                if (n < 8) {
+                    for (int i = n; i < 8; i++) { l[i] = 0; r[i] = 0; }
+                }
+                if (catchingUp && n == 0 && !rumble.isActive()) {
                     // 따라잡는 중인데 보낼 샘플이 없음: 이 슬롯은 건너뜀(무음 구간 보충 프레임 불필요)
                     continue;
                 }
@@ -384,10 +443,11 @@ public final class ApexHaptics {
         long catchups = sched.getAndResetCatchups();
         ArbsLog.i(String.format(Locale.US,
                 "APEX 송신: %.0f프레임/초(구동 %d, 중립 %d, rumble %d) 큐=%d 폐기=%d 언더런=%d PCM=%d패킷 갭리셋=%d 타컨트롤러=%d 출력peak=%d/127 | "
-                        + "bulk(0x57) 평균/최대=%.2f/%.2fms rx폴 평균/최대=%.2f/%.2fms 슬립오차 평균/최대=%.2f/%.2fms 놓친슬롯=%d 재동기=%d 따라잡기=%d rumble호출=%d(L=%d H=%d)",
+                        + "bulk(0x57) 평균/최대=%.2f/%.2fms rx폴 평균/최대=%.2f/%.2fms 슬립오차 평균/최대=%.2f/%.2fms 놓친슬롯=%d 재동기=%d 따라잡기=%d rumble호출=%d(L=%d H=%d) 지터버퍼 목표=%dms 재충전=%d 초과폐기=%d",
                 sentFrames / sec, driveFrames, neutralFrames, rumbleFrames, pipe.queueSize(), drop, underruns, packets, gaps, foreign, peak,
                 avgMs(xferSum, xferN), xferMax / 1e6, avgMs(rxSum, rxN), rxMax / 1e6, avgMs(sleepErrSum, sleepErrN), sleepErrMax / 1e6,
-                missed, resyncs, catchups, totRumbleCalls, rumble.low8(), rumble.high8()));
+                missed, resyncs, catchups, totRumbleCalls, rumble.low8(), rumble.high8(),
+                jitter.getTarget(), jitter.getAndResetUnderruns(), jitter.getAndResetTrims()));
         resetWindow();
     }
 
@@ -405,7 +465,52 @@ public final class ApexHaptics {
     }
 
     /** GetInfo 1회(A0 와 같은 IF2 교환). Pro + 그립 햅틱 + 체크섬 일치일 때만 true. */
-    private boolean probe() throws InterruptedException {
+    private boolean probeUntilReady() throws InterruptedException {
+        // 1) 첫 IF0 입력 리포트 대기(최대 3초, 없으면 그래도 진행)
+        long w0 = SystemClock.uptimeMillis();
+        if (!policy.inputSeen()) {
+            ArbsLog.i("APEX 준비: 첫 IF0 입력 리포트 대기(최대 " + ApexProbePolicy.INPUT_WAIT_MS + "ms)");
+            while (!terminate && !policy.inputSeen() && SystemClock.uptimeMillis() - w0 < ApexProbePolicy.INPUT_WAIT_MS) {
+                Thread.sleep(20);
+            }
+            ArbsLog.i(policy.inputSeen() ? "APEX 준비: 첫 입력 리포트 수신(" + (SystemClock.uptimeMillis() - w0) + "ms 후)"
+                    : "APEX 준비: 입력 리포트 없이 대기 만료 - 그래도 GetInfo 송신");
+        }
+        // 2) GetInfo 재시도(1초 간격, 최대 10회). 모두 실패해야 UNSUPPORTED. UNSUPPORTED 후에도 재시도 요청을 기다린다.
+        while (!terminate) {
+            state = State.PROBING;
+            int result;
+            do {
+                int n = policy.nextAttempt();
+                ArbsLog.i("APEX GetInfo 시도 " + n + "/" + ApexProbePolicy.MAX_ATTEMPTS);
+                result = probe();
+                if (result == 0) {
+                    policy.onReady();
+                    return true;
+                }
+                if (result == 2) {
+                    policy.onDefinitiveUnsupported();
+                    break;
+                }
+                if (terminate) return false;
+                if (!policy.onAttemptFailed()) break;
+                long s0 = SystemClock.uptimeMillis();
+                while (!terminate && SystemClock.uptimeMillis() - s0 < ApexProbePolicy.RETRY_INTERVAL_MS) Thread.sleep(20);
+            } while (!terminate);
+            if (terminate) return false;
+            state = State.UNSUPPORTED;
+            ArbsLog.i("APEX 햅틱 불가(UNSUPPORTED): " + policy.attempt() + "회 시도 실패. [APEX 다시 연결] 또는 동글/컨트롤러 재연결(입력 재개)로 재시도합니다");
+            retryRequested = false;
+            while (!terminate && !retryRequested) Thread.sleep(100);
+            if (terminate) return false;
+            retryRequested = false;
+            ArbsLog.i("APEX 준비 재시도 시작(처음부터)");
+        }
+        return false;
+    }
+
+    /** GetInfo 1회. 0=통과, 1=무응답/형식 불일치(재시도), 2=응답은 정상이나 지원 불가(재시도 무의미), 3=중단. */
+    private int probe() throws InterruptedException {
         byte[] buf = new byte[Math.max(epIn.getMaxPacketSize(), 64)];
         rxBuf = buf;
         int drained = 0;
@@ -418,9 +523,8 @@ public final class ApexHaptics {
         int sent = conn.bulkTransfer(epOut, req, req.length, 1000);
         ArbsLog.i("APEX GetInfo 송신(IF2 OUT 0x06, 32바이트 1회): 반환 " + sent + ", 큐 비우기 " + drained + "건");
         if (sent != req.length) {
-            state = State.UNSUPPORTED;
-            ArbsLog.i("APEX 햅틱 불가: GetInfo 전송 실패");
-            return false;
+            ArbsLog.i("APEX GetInfo 전송 실패(반환 " + sent + ") - 재시도 대상");
+            return 1;
         }
         long start = SystemClock.uptimeMillis();
         ApexProtocol.Info info = null;
@@ -433,19 +537,21 @@ public final class ApexHaptics {
                 info = ApexProtocol.parse(buf, n);
             }
         }
-        if (terminate) return false;
+        if (terminate) return 3;
         if (info == null) {
-            state = State.UNSUPPORTED;
-            ArbsLog.i("APEX 햅틱 불가: GetInfo 응답 없음/형식 불일치(수신 " + count + "건)");
-            return false;
+            ArbsLog.i("APEX GetInfo 응답 없음/형식 불일치(수신 " + count + "건) - 재시도 대상");
+            return 1;
         }
         ArbsLog.i("APEX GetInfo: " + info.describe());
-        if (!info.checksumOk || !info.isPro() || !info.hasGripHaptics()) {
-            state = State.UNSUPPORTED;
-            ArbsLog.i("APEX 햅틱 불가: Pro/그립햅틱/체크섬 확인 실패 - 더 이상 아무것도 보내지 않음");
-            return false;
+        if (!info.checksumOk) {
+            ArbsLog.i("APEX GetInfo 체크섬 불일치 - 재시도 대상");
+            return 1;
         }
-        return true;
+        if (!info.isPro() || !info.hasGripHaptics()) {
+            ArbsLog.i("APEX 햅틱 불가: Pro/그립햅틱 아님 - 더 이상 아무것도 보내지 않음");
+            return 2;
+        }
+        return 0;
     }
 
     private boolean activate() throws InterruptedException {

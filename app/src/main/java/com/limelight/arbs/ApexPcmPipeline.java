@@ -25,8 +25,11 @@ public final class ApexPcmPipeline {
     private float gain = 1.0f;
     private int cap = DEFAULT_CAP;
 
-    private final int[] qL = new int[QUEUE_LIMIT];
-    private final int[] qR = new int[QUEUE_LIMIT];
+    /** A1-3b: 지터 버퍼용 최대 용량(실제 상한은 {@link #setLimit}, 기본 {@link #QUEUE_LIMIT}). */
+    public static final int CAPACITY = 128;
+    private final int[] qL = new int[CAPACITY];
+    private final int[] qR = new int[CAPACITY];
+    private int limit = QUEUE_LIMIT;
     private int head, size;
     private long dropped;
     private int peak;
@@ -61,6 +64,20 @@ public final class ApexPcmPipeline {
         java.util.Arrays.fill(bufR, 0f);
         pos = 0;
         phase = 0;
+    }
+
+    /** 큐 상한(샘플 수, 1..CAPACITY). 넘으면 가장 오래된 샘플을 버린다. */
+    public synchronized void setLimit(int n) { limit = Math.max(1, Math.min(CAPACITY, n)); }
+
+    /** 큐가 [keep] 개를 넘으면 오래된 쪽부터 버려 [keep] 개로 만든다. 버린 개수 반환(폐기 통계에 포함). */
+    public synchronized int trimTo(int keep) {
+        int k = Math.max(0, keep);
+        if (size <= k) return 0;
+        int d = size - k;
+        head = (head + d) % CAPACITY;
+        size = k;
+        dropped += d;
+        return d;
     }
 
     public synchronized void clearQueue() {
@@ -106,12 +123,12 @@ public final class ApexPcmPipeline {
     }
 
     private void push(int l, int r) {
-        if (size == QUEUE_LIMIT) {
-            head = (head + 1) % QUEUE_LIMIT;
+        while (size >= limit) {
+            head = (head + 1) % CAPACITY;
             size--;
             dropped++;
         }
-        int idx = (head + size) % QUEUE_LIMIT;
+        int idx = (head + size) % CAPACITY;
         qL[idx] = l;
         qR[idx] = r;
         size++;
@@ -127,7 +144,7 @@ public final class ApexPcmPipeline {
         for (int i = 0; i < n; i++) {
             l[i] = qL[head];
             r[i] = qR[head];
-            head = (head + 1) % QUEUE_LIMIT;
+            head = (head + 1) % CAPACITY;
         }
         size -= n;
         return n;

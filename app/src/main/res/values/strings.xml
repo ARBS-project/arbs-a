@@ -257,6 +257,8 @@
         <item>50</item>
         <item>60</item>
     </string-array>
+    <string name="title_arbs_apex_status">APEX status</string>
+    <string name="summary_arbs_apex_status">NONE (dongle not connected)</string>
     <string name="title_arbs_open_log">ARBS log</string>
     <string name="summary_arbs_open_log">View, save to Downloads or copy the receive log</string>
     <string name="title_checkbox_enable_sops">Optimize game settings</string>
