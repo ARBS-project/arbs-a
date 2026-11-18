@@ -72,7 +72,7 @@ public class ApexPcmPipelineTest {
         p.setCap(60);
         int[] pk = peaks(p, 300.0, 10000, true, true);
         double expect = 10000.0 / 32768 * 60;
-        assertTrue("300Hz peak=" + pk[0], pk[0] >= expect * 0.7);
+        assertTrue("300Hz peak=" + pk[0], pk[0] >= expect * 0.65);
     }
 
     @Test
@@ -144,7 +144,7 @@ public class ApexPcmPipelineTest {
         assertEquals(30, p.scale(8192f));                // 15*2 = 30 (< 80%)
         assertTrue(p.scale(32767f) <= 60);               // 이득을 키워도 하드 상한
         p.setGain(100f);
-        assertEquals(4.0f, p.getGain(), 1e-6);
+        assertEquals(8.0f, p.getGain(), 1e-6);
     }
 
     @Test

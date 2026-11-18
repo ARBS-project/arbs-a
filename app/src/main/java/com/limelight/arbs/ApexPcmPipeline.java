@@ -4,12 +4,13 @@ package com.limelight.arbs;
  * ARBS A1-2: 48 kHz S16LE 스테레오 PCM -> 저역통과(~400 Hz) + 48:1 감축 -> 1 kHz int8 샘플 큐(좌/우 그립).
  * 안드로이드 의존성 없음(단위 테스트 대상). 모든 공개 메서드는 synchronized(PCM 콜백 스레드 ↔ 송신 스레드).
  *
- * 필터: Hamming 창 sinc FIR, 641탭(군지연 320샘플 = 6.67 ms), 차단 400 Hz, DC 이득 1.
- * 스케일: int8 = round(y/32768 x G x 127), 상한 +-min(사용자 상한, 60). 큐 상한 24 샘플(= 24 ms), 넘치면 오래된 것부터 폐기.
+ * 필터: Hamming 창 sinc FIR, 161탭(A1-3d: 군지연 80샘플 = 1.67 ms, 기존 641탭 6.67 ms), 차단 400 Hz, DC 이득 1.
+ * 스케일(A1-3c/d): out = y/32768 x 상한 x G, 상한의 80%부터 tanh 소프트 리미터. 노이즈 게이트(A1-3d): 5 ms 블록 RMS가
+ * 임계 %FS 미만으로 50 ms 지속되면 10 ms 페이드로 출력 0. 큐 용량/상한은 {@link #setLimit}.
  */
 public final class ApexPcmPipeline {
     public static final int DECIMATION = 48;
-    public static final int TAPS = 641;
+    public static final int TAPS = 161;
     public static final double CUTOFF_HZ = 400.0;
     public static final double SAMPLE_RATE = 48000.0;
     public static final int QUEUE_LIMIT = 24;
@@ -51,8 +52,8 @@ public final class ApexPcmPipeline {
         return h;
     }
 
-    /** 이득 G(0.5~2.0 권장). 0.1..4.0 으로 제한. 상한(리미터)은 항상 적용된다. */
-    public synchronized void setGain(float g) { gain = Math.max(0.1f, Math.min(4.0f, g)); }
+    /** 이득 G(1.0~8.0). 0.1..8.0 으로 제한. 상한(리미터)은 항상 적용된다. */
+    public synchronized void setGain(float g) { gain = Math.max(0.1f, Math.min(8.0f, g)); }
 
     public synchronized float getGain() { return gain; }
 
@@ -67,6 +68,62 @@ public final class ApexPcmPipeline {
         java.util.Arrays.fill(bufR, 0f);
         pos = 0;
         phase = 0;
+        gateQuietMsL = gateQuietMsR = 0;
+        gateClosedL = gateClosedR = false;
+        gateGainL = gateGainR = 1f;
+    }
+
+    // ---- A1-3d 노이즈 게이트
+    public static final double GATE_HOLD_MS = 50.0;
+    public static final int GATE_FADE_OUTPUTS = 10;       // 1 kHz 출력 10개 = 10 ms
+    private float gateThresholdPct = 2.0f;                // 0 = 끄기
+    private double gateQuietMsL, gateQuietMsR;
+    private boolean gateClosedL, gateClosedR;
+    private float gateGainL = 1f, gateGainR = 1f;
+    private long stGateOut, stGateClosed;
+
+    /** 게이트 임계값(%FS). 0 이하 = 끔. */
+    public synchronized void setGateThreshold(float pctFs) {
+        gateThresholdPct = Math.max(0f, Math.min(20f, pctFs));
+        if (gateThresholdPct == 0f) {
+            gateClosedL = gateClosedR = false;
+            gateQuietMsL = gateQuietMsR = 0;
+        }
+    }
+
+    public synchronized float getGateThreshold() { return gateThresholdPct; }
+
+    private void gateUpdate(short[] pcm, int frames) {
+        if (gateThresholdPct <= 0f || frames <= 0) return;
+        double sl = 0, sr = 0;
+        for (int f = 0; f < frames; f++) {
+            double l = pcm[2 * f];
+            double r = pcm[2 * f + 1];
+            sl += l * l;
+            sr += r * r;
+        }
+        double pl = 100.0 * Math.sqrt(sl / frames) / 32768.0;
+        double pr = 100.0 * Math.sqrt(sr / frames) / 32768.0;
+        double ms = frames * 1000.0 / SAMPLE_RATE;
+        if (pl < gateThresholdPct) {
+            gateQuietMsL += ms;
+            if (gateQuietMsL >= GATE_HOLD_MS) gateClosedL = true;
+        } else {
+            gateQuietMsL = 0;
+            gateClosedL = false;
+        }
+        if (pr < gateThresholdPct) {
+            gateQuietMsR += ms;
+            if (gateQuietMsR >= GATE_HOLD_MS) gateClosedR = true;
+        } else {
+            gateQuietMsR = 0;
+            gateClosedR = false;
+        }
+    }
+
+    private static float gateStep(float g, boolean closed) {
+        if (closed) return Math.max(0f, g - 1f / GATE_FADE_OUTPUTS);       // 10 ms 페이드 아웃
+        return Math.min(1f, g + 0.5f);                                      // 2 ms 안에 복귀(트랜지언트 보존)
     }
 
     /** 큐 상한(샘플 수, 1..CAPACITY). 넘으면 가장 오래된 샘플을 버린다. */
@@ -92,6 +149,7 @@ public final class ApexPcmPipeline {
     public synchronized int process(short[] pcm, int frames) {
         int outs = 0;
         int limit = Math.min(frames, pcm.length / 2);
+        gateUpdate(pcm, limit);
         for (int f = 0; f < limit; f++) {
             float l = pcm[2 * f];
             float r = pcm[2 * f + 1];
@@ -111,7 +169,11 @@ public final class ApexPcmPipeline {
                     accL += h * bufL[base + i];
                     accR += h * bufR[base + i];
                 }
-                push(scale(accL), scale(accR));
+                gateGainL = gateStep(gateGainL, gateClosedL);
+                gateGainR = gateStep(gateGainR, gateClosedR);
+                stGateOut++;
+                if (gateClosedL || gateClosedR) stGateClosed++;
+                push(scale(accL * gateGainL), scale(accR * gateGainR));
                 outs++;
             }
         }
@@ -152,13 +214,14 @@ public final class ApexPcmPipeline {
         return v;
     }
 
-    /** [샘플 수, 리미터 동작 %, 상한 도달 %, 입력 RMS %FS, 출력 RMS(단위), 출력 RMS 상한 대비 %] 후 초기화. */
+    /** [샘플 수, 리미터 동작 %, 상한 도달 %, 입력 RMS %FS, 출력 RMS(단위), 출력 RMS 상한 대비 %, 게이트 닫힘 %] 후 초기화. */
     public synchronized double[] getAndResetLevels() {
         double n = Math.max(1, stN);
         int lim = Math.min(cap, ApexProtocol.MAX_AMPLITUDE);
         double outRms = Math.sqrt(stOutSq / n);
         double[] r = {stN, 100.0 * stLimited / n, 100.0 * stClipped / n, 100.0 * Math.sqrt(stInSq / n),
-                outRms, lim > 0 ? 100.0 * outRms / lim : 0};
+                outRms, lim > 0 ? 100.0 * outRms / lim : 0, 100.0 * stGateClosed / Math.max(1, stGateOut)};
+        stGateOut = stGateClosed = 0;
         stN = stLimited = stClipped = 0;
         stInSq = stOutSq = 0;
         return r;

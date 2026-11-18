@@ -32,6 +32,7 @@ public final class ApexHaptics {
     private static final int EP_OUT = 0x06;
     private static final long NO_PCM_NEUTRAL_MS = 100;
     private static final long KEEPALIVE_MS = 50;
+    private volatile long keepaliveInterval = KEEPALIVE_MS;
     private static final int IDLE_ENTER_FRAMES = 8;
     private static final int MAX_RX_LOG = 20;
 
@@ -184,15 +185,19 @@ public final class ApexHaptics {
     private volatile String stopReason = "";
 
     /** 세션 시작(connectionStarted). [cap] = 설정 슬라이더(0..60). */
-    public void onSessionStart(int cap, float gain, int jitterFixedMs) {
+    public void onSessionStart(int cap, float gain, int jitterFixedMs, float gatePct, int keepaliveMs) {
         pipe.setCap(cap);
         pipe.setGain(gain);
+        pipe.setGateThreshold(gatePct);
+        keepaliveInterval = keepaliveMs >= 200 ? 200 : KEEPALIVE_MS;
         jitter.setFixed(jitterFixedMs);
         arrival.reset();
         userStopped = false;
         sessionRunning = true;
-        ArbsLog.i(String.format(Locale.US, "APEX 세션 시작: 상태=%s 진폭 상한=%d(하드 상한 %d) 이득 G=%.2f 지터버퍼=%s",
-                state, pipe.getCap(), ApexProtocol.MAX_AMPLITUDE, gain, jitterFixedMs > 0 ? ("고정 " + jitterFixedMs + "ms") : "자동"));
+        ArbsLog.i(String.format(Locale.US, "APEX 세션 시작: 상태=%s 진폭 상한=%d(하드 상한 %d) 이득 G=%.2f 게이트=%s 무음 keepalive=%dms 지터버퍼=%s",
+                state, pipe.getCap(), ApexProtocol.MAX_AMPLITUDE, gain,
+                gatePct > 0 ? String.format(Locale.US, "%.0f%%FS", gatePct) : "끔", keepaliveInterval,
+                jitterFixedMs > 0 ? ("고정 " + jitterFixedMs + "ms") : "자동(p95+4ms)"));
     }
 
     public void onSessionEnd(String reason) {
@@ -367,6 +372,8 @@ public final class ApexHaptics {
                 if (jr.underrun) underruns++;
                 if (jr.play) {
                     n = pipe.pop(l, r, 8);
+                    qDepthSum += avail;      // A1-3d: 재생 시점 큐 깊이(실제 지연 계산용)
+                    qDepthN++;
                 }
                 if (n < 8) {
                     for (int i = n; i < 8; i++) { l[i] = 0; r[i] = 0; }
@@ -382,7 +389,8 @@ public final class ApexHaptics {
                 if (allZero) zeroRun++; else zeroRun = 0;
 
                 boolean send = !allZero || zeroRun <= IDLE_ENTER_FRAMES || lastSendNs == 0
-                        || (now - lastSendNs) >= KEEPALIVE_MS * 1_000_000L;
+                        || (now - lastSendNs) >= keepaliveInterval * 1_000_000L;
+                if (!send) silenceSkipped++;
                 if (send) {
                     byte[] f = ApexProtocol.gripFrame(l, r);
                     long x0 = System.nanoTime();
@@ -431,8 +439,13 @@ public final class ApexHaptics {
         return stopReason;
     }
 
+    private long qDepthSum, qDepthN, silenceSkipped;
+
     private void logStats(long windowNs) {
         double sec = Math.max(0.001, windowNs / 1e9);
+        // A1-3d: 도착 간격 p95 -> 지터 버퍼 자동 목표(p95 + 4 ms). 조용한 창에서도 계산한다.
+        arrival.snapshotAndReset(System.nanoTime(), arrSnap);
+        jitter.adaptFromP95(arrSnap.p95Ms, arrSnap.packets, System.nanoTime());
         int packets = winPackets;
         winPackets = 0;
         int gaps = winGaps;
@@ -456,19 +469,23 @@ public final class ApexHaptics {
                 avgMs(xferSum, xferN), xferMax / 1e6, avgMs(rxSum, rxN), rxMax / 1e6, avgMs(sleepErrSum, sleepErrN), sleepErrMax / 1e6,
                 missed, resyncs, catchups, totRumbleCalls, rumble.low8(), rumble.high8(),
                 jitter.getTarget(), jitter.getAndResetUnderruns(), jitter.getAndResetTrims()));
-        // A1-3c: 도착 간격 / 레벨(클리핑) / 추가 지연 추정
-        arrival.snapshotAndReset(System.nanoTime(), arrSnap);
+        // A1-3c/3d: 레벨(클리핑·게이트) / 도착 간격 / 추가 지연(재생 지점까지의 실제 지연 단일 값)
         double[] lv = pipe.getAndResetLevels();
         double filterMs = (ApexPcmPipeline.TAPS - 1) / 2.0 / ApexPcmPipeline.SAMPLE_RATE * 1000.0;
-        int q = pipe.queueSize();
-        double est = filterMs + jitter.getTarget() + q + ApexProtocol.FRAME_MS;
+        double avgQ = qDepthN == 0 ? pipe.queueSize() : (double) qDepthSum / qDepthN;
+        // 실제 지연 = 필터 군지연 + 재생 시점 평균 큐 깊이(1 샘플 = 1 ms) + 프레임 8 ms(모아서 송신). 버퍼 목표는 더하지 않는다(이미 큐에 반영).
+        double est = filterMs + avgQ + ApexProtocol.FRAME_MS;
         ArbsLog.i(String.format(Locale.US,
-                "APEX 레벨: 리미터동작 %.1f%% 상한도달 %.1f%% 입력RMS %.1f%%FS 출력RMS %.1f(상한 대비 %.0f%%) 상한=%d 이득=%.2f | "
-                        + "PCM도착간격 평균/p95/최대=%.1f/%.1f/%.1fms 최대무수신=%.1fms | "
-                        + "ARBS추가지연추정≈%.1fms (필터 %.1f + 버퍼목표 %d%s + 큐 %d + 프레임 %d; 목표와 큐는 일부 겹쳐 상한 추정)",
-                lv[1], lv[2], lv[3], lv[4], lv[5], pipe.getCap(), pipe.getGain(),
+                "APEX 레벨: 리미터동작 %.1f%% 상한도달 %.1f%% 게이트닫힘 %.1f%% 입력RMS %.1f%%FS 출력RMS %.1f(상한 대비 %.0f%%) 상한=%d 이득=%.2f 게이트=%.0f%% | "
+                        + "PCM도착간격 평균/p95/최대=%.1f/%.1f/%.1fms 최대무수신=%.1fms | 무음송신 %d 생략 %d(keepalive %dms) | "
+                        + "ARBS추가지연=%.1fms (필터 %.1f + 재생시점 큐 평균 %.1f + 프레임 %d) 버퍼목표=%dms%s",
+                lv[1], lv[2], lv[6], lv[3], lv[4], lv[5], pipe.getCap(), pipe.getGain(), pipe.getGateThreshold(),
                 arrSnap.avgMs, arrSnap.p95Ms, arrSnap.maxMs, arrSnap.maxSilenceMs,
-                est, filterMs, jitter.getTarget(), jitter.getFixed() > 0 ? "(고정)" : "(자동)", q, ApexProtocol.FRAME_MS));
+                neutralFrames, silenceSkipped, keepaliveInterval,
+                est, filterMs, avgQ, ApexProtocol.FRAME_MS, jitter.getTarget(), jitter.getFixed() > 0 ? "(고정)" : "(자동 p95+4)"));
+        qDepthSum = 0;
+        qDepthN = 0;
+        silenceSkipped = 0;
         resetWindow();
     }
 

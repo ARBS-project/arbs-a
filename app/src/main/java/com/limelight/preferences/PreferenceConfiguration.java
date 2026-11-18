@@ -134,7 +134,9 @@ public class PreferenceConfiguration {
     public boolean arbsApexFirst = true; // ARBS A1-2
     public boolean arbsInputDiag; // ARBS A1-2b
     public int arbsApexAmp = 40; // ARBS A1-2 (0..60 of 127)
-    public float arbsApexGain = 1.0f; // ARBS A1-3c (0.5..2.0)
+    public float arbsApexGain = 3.0f; // ARBS A1-3d (1.0..8.0, default 3.0)
+    public float arbsGatePct = 2.0f; // ARBS A1-3d noise gate threshold %FS (0 = off)
+    public int arbsKeepaliveMs = 50; // ARBS A1-3d silence keepalive interval (50 / 200)
     public int arbsJitterFixed = 0; // ARBS A1-3c (0 = auto, 16..80 fixed ms)
     public boolean onscreenController;
     public boolean onlyL3R3;
@@ -592,10 +594,16 @@ public class PreferenceConfiguration {
             config.arbsApexAmp = 40;
         }
         try {
-            config.arbsApexGain = Math.max(0.5f, Math.min(2.0f, Float.parseFloat(prefs.getString("list_arbs_apex_gain", "1.0"))));
+            config.arbsApexGain = Math.max(1.0f, Math.min(8.0f, Float.parseFloat(prefs.getString("list_arbs_apex_gain", "3.0"))));
         } catch (NumberFormatException e) {
-            config.arbsApexGain = 1.0f;
+            config.arbsApexGain = 3.0f;
         }
+        try {
+            config.arbsGatePct = Math.max(0f, Math.min(4f, Float.parseFloat(prefs.getString("list_arbs_gate", "2"))));
+        } catch (NumberFormatException e) {
+            config.arbsGatePct = 2.0f;
+        }
+        config.arbsKeepaliveMs = "200".equals(prefs.getString("list_arbs_keepalive", "50")) ? 200 : 50;
         try {
             int jf = Integer.parseInt(prefs.getString("list_arbs_jitter_fixed", "0"));
             config.arbsJitterFixed = jf <= 0 ? 0 : Math.max(16, Math.min(80, jf));

@@ -222,7 +222,21 @@
             android:summary="@string/summary_arbs_apex_gain"
             android:entries="@array/arbs_apex_gain_names"
             android:entryValues="@array/arbs_apex_gain_values"
-            android:defaultValue="1.0" />
+            android:defaultValue="3.0" />
+        <ListPreference
+            android:key="list_arbs_gate"
+            android:title="@string/title_arbs_gate"
+            android:summary="@string/summary_arbs_gate"
+            android:entries="@array/arbs_gate_names"
+            android:entryValues="@array/arbs_gate_values"
+            android:defaultValue="2" />
+        <ListPreference
+            android:key="list_arbs_keepalive"
+            android:title="@string/title_arbs_keepalive"
+            android:summary="@string/summary_arbs_keepalive"
+            android:entries="@array/arbs_keepalive_names"
+            android:entryValues="@array/arbs_keepalive_values"
+            android:defaultValue="50" />
         <ListPreference
             android:key="list_arbs_jitter_fixed"
             android:title="@string/title_arbs_jitter_fixed"
