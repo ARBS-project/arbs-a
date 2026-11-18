@@ -73,22 +73,26 @@ public class ApexProtocolTest {
 
     @Test
     public void amplitudeAbove60IsRejected() {
+        // A1-3e(EA-APR-04): 하드 상한 60 -> 127(int8 ±127, ASB와 동일)
+        assertEquals(127, ApexProtocol.MAX_AMPLITUDE);
         int[] ok = new int[8];
         int[] bad = new int[8];
-        bad[3] = 61;
+        bad[3] = 128;
         try {
             ApexProtocol.gripFrame(bad, ok);
-            fail("61 must be rejected");
+            fail("128 must be rejected");
         } catch (IllegalArgumentException expected) { }
-        bad[3] = -61;
+        bad[3] = -128;
         try {
             ApexProtocol.gripFrame(ok, bad);
-            fail("-61 must be rejected");
+            fail("-128 must be rejected");
         } catch (IllegalArgumentException expected) { }
-        bad[3] = 60;
-        ApexProtocol.gripFrame(bad, bad);
-        bad[3] = -60;
-        ApexProtocol.gripFrame(bad, bad);
+        bad[3] = 127;
+        byte[] f = ApexProtocol.gripFrame(bad, bad);
+        assertEquals(255, f[6 + 3 * 3] & 0xFF);          // 127 + 128
+        bad[3] = -127;
+        f = ApexProtocol.gripFrame(bad, bad);
+        assertEquals(1, f[6 + 3 * 3] & 0xFF);            // -127 + 128
     }
 
     @Test

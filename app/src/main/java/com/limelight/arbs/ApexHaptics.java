@@ -185,18 +185,28 @@ public final class ApexHaptics {
     private volatile String stopReason = "";
 
     /** 세션 시작(connectionStarted). [cap] = 설정 슬라이더(0..60). */
-    public void onSessionStart(int cap, float gain, int jitterFixedMs, float gatePct, int keepaliveMs) {
+    /** 무음 시 처리(A1-3e): 1=중립 keepalive 50ms(현행) 2=keepalive 200ms 3=긴 무음 시 활성 해제 4=무음 중 송신 중단. */
+    public static final int SILENCE_KEEPALIVE_50 = 1, SILENCE_KEEPALIVE_200 = 2, SILENCE_SUSPEND = 3, SILENCE_STOP_SENDING = 4;
+    public static final long SUSPEND_AFTER_MS = 2000;
+    private volatile int silenceMode = SILENCE_KEEPALIVE_50;
+
+    public void onSessionStart(int cap, float gain, int jitterFixedMs, float gatePct, int silence, boolean asbCurve, int taps) {
         pipe.setCap(cap);
         pipe.setGain(gain);
         pipe.setGateThreshold(gatePct);
-        keepaliveInterval = keepaliveMs >= 200 ? 200 : KEEPALIVE_MS;
+        pipe.setAsbCurve(asbCurve);
+        pipe.setTaps(taps);
+        silenceMode = silence >= 1 && silence <= 4 ? silence : SILENCE_KEEPALIVE_50;
+        keepaliveInterval = silenceMode == SILENCE_KEEPALIVE_200 ? 200 : KEEPALIVE_MS;
+        suspendCount = resumeCount = 0;
         jitter.setFixed(jitterFixedMs);
         arrival.reset();
         userStopped = false;
         sessionRunning = true;
-        ArbsLog.i(String.format(Locale.US, "APEX 세션 시작: 상태=%s 진폭 상한=%d(하드 상한 %d) 이득 G=%.2f 게이트=%s 무음 keepalive=%dms 지터버퍼=%s",
-                state, pipe.getCap(), ApexProtocol.MAX_AMPLITUDE, gain,
-                gatePct > 0 ? String.format(Locale.US, "%.0f%%FS", gatePct) : "끔", keepaliveInterval,
+        ArbsLog.i(String.format(Locale.US, "APEX 세션 시작: 상태=%s 진폭 상한=%d(하드 상한 %d) 이득 G=%.2f 곡선=%s 필터=%d탭(%.1fms) 게이트=%s 무음 처리=모드%d(keepalive %dms) 지터버퍼=%s",
+                state, pipe.getCap(), ApexProtocol.MAX_AMPLITUDE, gain, asbCurve ? "ASB" : "tanh", pipe.getTaps(),
+                (pipe.getTaps() - 1) / 2.0 / ApexPcmPipeline.SAMPLE_RATE * 1000.0,
+                gatePct > 0 ? String.format(Locale.US, "%.0f%%FS", gatePct) : "끔", silenceMode, keepaliveInterval,
                 jitterFixedMs > 0 ? ("고정 " + jitterFixedMs + "ms") : "자동(p95+4ms)"));
     }
 
@@ -332,6 +342,28 @@ public final class ApexHaptics {
                     Thread.sleep(15);
                     continue;
                 }
+                if (suspended) {
+                    // 모드 3: 그립 비활성 중. PCM 은 계속 받되 최신 16샘플만 유지(재개 직전 샘플 보존), 신호 재개/rumble 이면 재활성.
+                    if (pipe.getSilentMs() < 50 || rumble.isActive()) {
+                        ArbsLog.i("APEX 무음 해제: 신호 재개 -> 그립 재활성(0x53 활성 + " + ApexProtocol.ENABLE_WAIT_MS + "ms 대기, 직전 샘플 보존)");
+                        if (!sendFrame(ApexProtocol.gripRealtimeEnable(), "0x53 재활성")) {
+                            ArbsLog.i("APEX 재활성 전송 실패 -> 엔진 중단");
+                            break;
+                        }
+                        Thread.sleep(ApexProtocol.ENABLE_WAIT_MS);
+                        suspended = false;
+                        resumeCount++;
+                        sched.start(System.nanoTime());
+                        lastSendNs = 0;
+                        zeroRun = 0;
+                        jitter.reset(System.nanoTime());
+                        trimBlockedUntilNs = System.nanoTime() + 150_000_000L;
+                    } else {
+                        pipe.trimTo(16);
+                        LockSupport.parkNanos(8_000_000L);
+                    }
+                    continue;
+                }
                 // ---- 한 틱 (8 ms 슬롯, 절대 기한)
                 long now = System.nanoTime();
                 long late = now - sched.target();
@@ -368,7 +400,7 @@ public final class ApexHaptics {
                 int n = 0;
                 // A1-3b: 지터 버퍼 — 채워질 때까지 대기, 넘치면 오래된 것 폐기, 모자라면 재충전
                 jitter.decide(avail, now, jr);
-                if (jr.trimTo >= 0) pipe.trimTo(jr.trimTo);
+                if (jr.trimTo >= 0 && now >= trimBlockedUntilNs) pipe.trimTo(jr.trimTo);
                 if (jr.underrun) underruns++;
                 if (jr.play) {
                     n = pipe.pop(l, r, 8);
@@ -388,8 +420,16 @@ public final class ApexHaptics {
                 for (int i = 0; i < 8; i++) if (l[i] != 0 || r[i] != 0) { allZero = false; break; }
                 if (allZero) zeroRun++; else zeroRun = 0;
 
+                if (silenceMode == SILENCE_SUSPEND && allZero && zeroRun > IDLE_ENTER_FRAMES && !rumble.isActive()
+                        && pipe.getSilentMs() >= SUSPEND_AFTER_MS) {
+                    ArbsLog.i("APEX 긴 무음(" + SUSPEND_AFTER_MS + "ms) -> 그립 비활성(정지 시퀀스, 세션·PCM 수신은 유지)");
+                    sendStopSequence();
+                    suspended = true;
+                    suspendCount++;
+                    continue;
+                }
                 boolean send = !allZero || zeroRun <= IDLE_ENTER_FRAMES || lastSendNs == 0
-                        || (now - lastSendNs) >= keepaliveInterval * 1_000_000L;
+                        || (silenceMode != SILENCE_STOP_SENDING && (now - lastSendNs) >= keepaliveInterval * 1_000_000L);
                 if (!send) silenceSkipped++;
                 if (send) {
                     byte[] f = ApexProtocol.gripFrame(l, r);
@@ -405,7 +445,12 @@ public final class ApexHaptics {
                     }
                     lastSendNs = now;
                     sentFrames++;
-                    if (allZero) neutralFrames++; else driveFrames++;
+                    if (allZero) {
+                        neutralFrames++;
+                        if (zeroRun > IDLE_ENTER_FRAMES) idleSent++;
+                    } else {
+                        driveFrames++;
+                    }
                     if (!catchingUp) {
                         long r0 = System.nanoTime();
                         rxPoll();
@@ -439,7 +484,10 @@ public final class ApexHaptics {
         return stopReason;
     }
 
-    private long qDepthSum, qDepthN, silenceSkipped;
+    private long qDepthSum, qDepthN, silenceSkipped, idleSent;
+    private volatile boolean suspended;
+    private long suspendCount, resumeCount;
+    private long trimBlockedUntilNs;
 
     private void logStats(long windowNs) {
         double sec = Math.max(0.001, windowNs / 1e9);
@@ -471,17 +519,17 @@ public final class ApexHaptics {
                 jitter.getTarget(), jitter.getAndResetUnderruns(), jitter.getAndResetTrims()));
         // A1-3c/3d: 레벨(클리핑·게이트) / 도착 간격 / 추가 지연(재생 지점까지의 실제 지연 단일 값)
         double[] lv = pipe.getAndResetLevels();
-        double filterMs = (ApexPcmPipeline.TAPS - 1) / 2.0 / ApexPcmPipeline.SAMPLE_RATE * 1000.0;
+        double filterMs = (pipe.getTaps() - 1) / 2.0 / ApexPcmPipeline.SAMPLE_RATE * 1000.0;
         double avgQ = qDepthN == 0 ? pipe.queueSize() : (double) qDepthSum / qDepthN;
         // 실제 지연 = 필터 군지연 + 재생 시점 평균 큐 깊이(1 샘플 = 1 ms) + 프레임 8 ms(모아서 송신). 버퍼 목표는 더하지 않는다(이미 큐에 반영).
         double est = filterMs + avgQ + ApexProtocol.FRAME_MS;
         ArbsLog.i(String.format(Locale.US,
                 "APEX 레벨: 리미터동작 %.1f%% 상한도달 %.1f%% 게이트닫힘 %.1f%% 입력RMS %.1f%%FS 출력RMS %.1f(상한 대비 %.0f%%) 상한=%d 이득=%.2f 게이트=%.0f%% | "
-                        + "PCM도착간격 평균/p95/최대=%.1f/%.1f/%.1fms 최대무수신=%.1fms | 무음송신 %d 생략 %d(keepalive %dms) | "
+                        + "PCM도착간격 평균/p95/최대=%.1f/%.1f/%.1fms 최대무수신=%.1fms | 무음 모드%d: 무음중 송신 %d 생략 %d(keepalive %dms) 비활성 %d회 재활성 %d회 | "
                         + "ARBS추가지연=%.1fms (필터 %.1f + 재생시점 큐 평균 %.1f + 프레임 %d) 버퍼목표=%dms%s",
                 lv[1], lv[2], lv[6], lv[3], lv[4], lv[5], pipe.getCap(), pipe.getGain(), pipe.getGateThreshold(),
                 arrSnap.avgMs, arrSnap.p95Ms, arrSnap.maxMs, arrSnap.maxSilenceMs,
-                neutralFrames, silenceSkipped, keepaliveInterval,
+                silenceMode, idleSent, silenceSkipped, keepaliveInterval, suspendCount, resumeCount,
                 est, filterMs, avgQ, ApexProtocol.FRAME_MS, jitter.getTarget(), jitter.getFixed() > 0 ? "(고정)" : "(자동 p95+4)"));
         qDepthSum = 0;
         qDepthN = 0;
@@ -593,6 +641,8 @@ public final class ApexHaptics {
     }
 
     private boolean activate() throws InterruptedException {
+        suspended = false;
+        idleSent = 0;
         pipe.resetFilter();
         pipe.clearQueue();
         pipe.getAndResetDropped();
@@ -619,6 +669,7 @@ public final class ApexHaptics {
 
     private void deactivate(String reason) {
         ArbsLog.i("APEX 정지 시퀀스 시작: " + reason);
+        suspended = false;
         rumble.clear();   // 정지 후 재개 때 오래된 진동이 되살아나지 않게
         int ok = sendStopSequence();
         active = false;

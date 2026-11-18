@@ -15,7 +15,9 @@ public class ApexRumbleSynthTest {
         assertEquals(60, ApexRumbleSynth.amplitude(255, 60));
         assertEquals(40, ApexRumbleSynth.amplitude(255, 40));
         assertEquals(30, ApexRumbleSynth.amplitude(128, 60));     // 128/255*60 = 30.1
-        assertEquals(60, ApexRumbleSynth.amplitude(255, 127));    // 하드 상한
+        assertEquals(112, ApexRumbleSynth.amplitude(255, 127));   // ASB 사인 최댓값 112(Apex6HapticBridge.cpp:86)
+        assertEquals(112, ApexRumbleSynth.amplitude(255, 112));
+        assertEquals(100, ApexRumbleSynth.amplitude(255, 100));
         assertEquals(0, ApexRumbleSynth.amplitude(255, -3));
     }
 
@@ -84,8 +86,8 @@ public class ApexRumbleSynthTest {
         ApexRumbleSynth s = new ApexRumbleSynth();
         s.set(0xFFFF, 0xFFFF, 0);
         int[][] o = run(s, 127, 200);
-        assertTrue(peak(o[0]) <= 60);
-        assertTrue(peak(o[1]) <= 60);
+        assertTrue(peak(o[0]) <= 112 && peak(o[0]) >= 108);
+        assertTrue(peak(o[1]) <= 112 && peak(o[1]) >= 108);
     }
 
     @Test

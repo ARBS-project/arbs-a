@@ -102,7 +102,7 @@ public class ApexPcmPipelineTest {
 
     @Test
     public void scaleFormulaAndCaps() {
-        ApexPcmPipeline p = new ApexPcmPipeline();
+        ApexPcmPipeline p = new ApexPcmPipeline(); p.setAsbCurve(false);   // tanh 곡선(A1-3d) 검증
         p.setCap(60);
         // A1-3c: out = s16/32768 x 상한(비례 축소), 80% 아래는 선형
         assertEquals(9, p.scale(5000f));                 // 5000/32768*60 = 9.16
@@ -126,17 +126,19 @@ public class ApexPcmPipelineTest {
     public void capCannotExceedHardLimit() {
         ApexPcmPipeline p = new ApexPcmPipeline();
         p.setCap(127);
-        assertEquals(60, p.getCap());
-        assertTrue(p.scale(32767f) <= 60);
+        assertEquals(127, p.getCap());
+        p.setCap(300);
+        assertEquals(127, p.getCap());
+        assertTrue(p.scale(32767f) <= 127);
         p.setCap(-5);
         assertEquals(0, p.getCap());
         p.setCap(61);
-        assertEquals(60, p.getCap());
+        assertEquals(61, p.getCap());
     }
 
     @Test
     public void gainScalesBeforeCap() {
-        ApexPcmPipeline p = new ApexPcmPipeline();
+        ApexPcmPipeline p = new ApexPcmPipeline(); p.setAsbCurve(false);   // tanh 곡선(A1-3d) 검증
         p.setCap(60);
         p.setGain(0.5f);
         assertEquals(8, p.scale(8192f));                 // 15*0.5 = 7.5 -> 8
@@ -207,7 +209,7 @@ public class ApexPcmPipelineTest {
 
     @Test
     public void smallSignalsStayProportionalBelowKnee() {
-        ApexPcmPipeline p = new ApexPcmPipeline();
+        ApexPcmPipeline p = new ApexPcmPipeline(); p.setAsbCurve(false);   // tanh 곡선(A1-3d) 검증
         p.setCap(60);
         // 80% 지점(= 입력 0.8 FS) 아래는 정확히 선형: out = in/32768*60
         for (int v = 0; v <= 26000; v += 1300) {
@@ -219,7 +221,7 @@ public class ApexPcmPipelineTest {
 
     @Test
     public void limiterIsMonotonicAndSmoothAboveKnee() {
-        ApexPcmPipeline p = new ApexPcmPipeline();
+        ApexPcmPipeline p = new ApexPcmPipeline(); p.setAsbCurve(false);   // tanh 곡선(A1-3d) 검증
         p.setCap(60);
         int prev = -1;
         for (int v = 0; v <= 32767; v += 64) {
@@ -231,7 +233,7 @@ public class ApexPcmPipelineTest {
 
     @Test
     public void levelStatsReportLimiterAndRms() {
-        ApexPcmPipeline p = new ApexPcmPipeline();
+        ApexPcmPipeline p = new ApexPcmPipeline(); p.setAsbCurve(false);   // tanh 곡선(A1-3d) 검증
         p.setCap(60);
         for (int i = 0; i < 100; i++) p.scale(10000f);     // 작은 신호: 리미터 없음
         double[] a = p.getAndResetLevels();

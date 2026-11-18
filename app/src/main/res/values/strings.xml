@@ -238,7 +238,7 @@
     <string name="title_arbs_input_diag">APEX input diagnostic log</string>
     <string name="summary_arbs_input_diag">Log raw IF0 reports (changes only, max 20 lines/s) with parsed values and the values sent to the host. Default off.</string>
     <string name="title_arbs_apex_amp">APEX grip haptics strength</string>
-    <string name="summary_arbs_apex_amp">Maximum grip amplitude (hard limit 60 of 127).</string>
+    <string name="summary_arbs_apex_amp">Maximum grip amplitude (maximum 127, same as ASB; default 40).</string>
     <string-array name="arbs_apex_amp_names">
         <item>0 (off)</item>
         <item>10</item>
@@ -246,7 +246,10 @@
         <item>30</item>
         <item>40 (default)</item>
         <item>50</item>
-        <item>60 (maximum)</item>
+        <item>60</item>
+        <item>80</item>
+        <item>100</item>
+        <item>127 (maximum, same as ASB)</item>
     </string-array>
     <string-array name="arbs_apex_amp_values">
         <item>0</item>
@@ -256,14 +259,17 @@
         <item>40</item>
         <item>50</item>
         <item>60</item>
+        <item>80</item>
+        <item>100</item>
+        <item>127</item>
     </string-array>
     <string name="title_arbs_apex_gain">APEX haptics gain</string>
-    <string name="summary_arbs_apex_gain">Gain before the soft limiter (the strength limit above is never exceeded). Default 3.0.</string>
+    <string name="summary_arbs_apex_gain">Gain before the soft limiter (the strength limit above is never exceeded). Default 4.0 (ASB curve).</string>
     <string-array name="arbs_apex_gain_names">
         <item>1.0</item>
         <item>2.0</item>
-        <item>3.0 (default)</item>
-        <item>4.0</item>
+        <item>3.0</item>
+        <item>4.0 (default)</item>
         <item>6.0</item>
         <item>8.0</item>
     </string-array>
@@ -278,9 +284,9 @@
     <string name="title_arbs_gate">Noise gate</string>
     <string name="summary_arbs_gate">Fades the output to 0 when the 5 ms input level stays below the threshold for 50 ms.</string>
     <string-array name="arbs_gate_names">
-        <item>Off</item>
+        <item>Off (default)</item>
         <item>1 %FS</item>
-        <item>2 %FS (default)</item>
+        <item>2 %FS</item>
         <item>4 %FS</item>
     </string-array>
     <string-array name="arbs_gate_values">
@@ -289,15 +295,41 @@
         <item>2</item>
         <item>4</item>
     </string-array>
-    <string name="title_arbs_keepalive">Silence keepalive interval</string>
-    <string name="summary_arbs_keepalive">How often a neutral frame is sent during silence. 50 ms = current behavior.</string>
-    <string-array name="arbs_keepalive_names">
-        <item>50 ms (default)</item>
-        <item>200 ms</item>
+    <string name="title_arbs_silence_mode">Silence handling</string>
+    <string name="summary_arbs_silence_mode">What to do while the game sends no haptics. Diagnostic options 2-4 may change the faint-noise behavior.</string>
+    <string-array name="arbs_silence_mode_names">
+        <item>1: Neutral keepalive every 50 ms (current, default)</item>
+        <item>2: Neutral keepalive every 200 ms</item>
+        <item>3: Deactivate grip after 2 s of silence, reactivate on signal</item>
+        <item>4: Stop sending frames during silence (grip stays active)</item>
     </string-array>
-    <string-array name="arbs_keepalive_values">
-        <item>50</item>
-        <item>200</item>
+    <string-array name="arbs_silence_mode_values">
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+    <string name="title_arbs_curve">Amplification curve</string>
+    <string name="summary_arbs_curve">ASB curve g*x/(1+(g-1)|x|) (default) or the earlier gain x tanh limiter.</string>
+    <string-array name="arbs_curve_names">
+        <item>ASB curve (default)</item>
+        <item>Gain x tanh limiter (A1-3d)</item>
+    </string-array>
+    <string-array name="arbs_curve_values">
+        <item>asb</item>
+        <item>tanh</item>
+    </string-array>
+    <string name="title_arbs_filter">Low-pass filter length</string>
+    <string name="summary_arbs_filter">Longer = cleaner downsampling, more delay: 161 taps 1.7 ms, 321 taps 3.3 ms (default), 641 taps 6.7 ms.</string>
+    <string-array name="arbs_filter_names">
+        <item>161 taps (1.7 ms)</item>
+        <item>321 taps (3.3 ms, default)</item>
+        <item>641 taps (6.7 ms)</item>
+    </string-array>
+    <string-array name="arbs_filter_values">
+        <item>161</item>
+        <item>321</item>
+        <item>641</item>
     </string-array>
     <string name="title_arbs_jitter_fixed">Jitter buffer fixed delay</string>
     <string name="summary_arbs_jitter_fixed">0 = automatic (adaptive, 16-80 ms). Otherwise a fixed delay in ms.</string>

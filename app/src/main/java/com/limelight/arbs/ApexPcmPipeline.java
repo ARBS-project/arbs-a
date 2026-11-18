@@ -10,17 +10,35 @@ package com.limelight.arbs;
  */
 public final class ApexPcmPipeline {
     public static final int DECIMATION = 48;
-    public static final int TAPS = 161;
+    /** 필터 탭 선택지(A1-3e): 161(1.7 ms) / 321(3.3 ms, 기본) / 641(6.7 ms). */
+    public static final int[] TAP_CHOICES = {161, 321, 641};
+    public static final int TAPS = 321;
+    public static final int MAX_TAPS = 641;
     public static final double CUTOFF_HZ = 400.0;
     public static final double SAMPLE_RATE = 48000.0;
     public static final int QUEUE_LIMIT = 24;
     public static final int DEFAULT_CAP = 40;
 
-    static final float[] H = design();
+    static final float[] H = design(TAPS);
 
-    private final float[] bufL = new float[TAPS * 2];
-    private final float[] bufR = new float[TAPS * 2];
-    private int pos;        // next write position (0..TAPS-1)
+    private static final float[][] CACHE = new float[TAP_CHOICES.length][];
+
+    /** [taps] 탭 필터 계수(캐시). 지원하지 않는 값이면 기본 321. */
+    static synchronized float[] designFor(int taps) {
+        for (int i = 0; i < TAP_CHOICES.length; i++) {
+            if (TAP_CHOICES[i] == taps) {
+                if (CACHE[i] == null) CACHE[i] = design(taps);
+                return CACHE[i];
+            }
+        }
+        return designFor(TAPS);
+    }
+
+    private final float[] bufL = new float[MAX_TAPS * 2];
+    private final float[] bufR = new float[MAX_TAPS * 2];
+    private int taps = TAPS;
+    private float[] hh = H;
+    private int pos;        // next write position (0..taps-1)
     private int phase;      // inputs since last output
 
     private float gain = 1.0f;
@@ -35,7 +53,7 @@ public final class ApexPcmPipeline {
     private long dropped;
     private int peak;
 
-    static float[] design() {
+    static float[] design(int TAPS) {
         float[] h = new float[TAPS];
         int m = (TAPS - 1) / 2;
         double wc = 2.0 * Math.PI * CUTOFF_HZ / SAMPLE_RATE;
@@ -57,6 +75,24 @@ public final class ApexPcmPipeline {
 
     public synchronized float getGain() { return gain; }
 
+    /** A1-3e: 필터 탭 수(161/321/641). 군지연 = (taps-1)/2 샘플(48 kHz). 필터 이력 초기화. */
+    public synchronized void setTaps(int n) {
+        int t = TAPS;
+        for (int c : TAP_CHOICES) if (c == n) t = c;
+        taps = t;
+        hh = designFor(t);
+        resetFilter();
+    }
+
+    public synchronized int getTaps() { return taps; }
+
+    /** A1-3e 증폭 곡선: false = 기존 이득×tanh, true = ASB 곡선 g·x/(1+(g-1)|x|)(Apex6PcmGain.h:8-22). 기본 ASB. */
+    private boolean asbCurve = true;
+
+    public synchronized void setAsbCurve(boolean on) { asbCurve = on; }
+
+    public synchronized boolean isAsbCurve() { return asbCurve; }
+
     /** 사용자 상한(0..60). 하드 상한 60 을 넘을 수 없다. */
     public synchronized void setCap(int c) { cap = Math.max(0, Math.min(ApexProtocol.MAX_AMPLITUDE, c)); }
 
@@ -71,12 +107,13 @@ public final class ApexPcmPipeline {
         gateQuietMsL = gateQuietMsR = 0;
         gateClosedL = gateClosedR = false;
         gateGainL = gateGainR = 1f;
+        silentMs = 0;
     }
 
     // ---- A1-3d 노이즈 게이트
     public static final double GATE_HOLD_MS = 50.0;
     public static final int GATE_FADE_OUTPUTS = 10;       // 1 kHz 출력 10개 = 10 ms
-    private float gateThresholdPct = 2.0f;                // 0 = 끄기
+    private float gateThresholdPct = 0.0f;                // 0 = 끄기 (A1-3e: 기본 끔)
     private double gateQuietMsL, gateQuietMsR;
     private boolean gateClosedL, gateClosedR;
     private float gateGainL = 1f, gateGainR = 1f;
@@ -93,8 +130,15 @@ public final class ApexPcmPipeline {
 
     public synchronized float getGateThreshold() { return gateThresholdPct; }
 
+    /** A1-3e: 블록 RMS 가 이 %FS 미만이면 "무음"으로 센다(긴 무음 시 활성 해제 판단용). */
+    public static final double SILENCE_PCT = 0.3;
+    private double silentMs;
+
+    /** 입력이 무음(RMS<0.3%FS, 또는 게이트 닫힘)으로 이어진 시간(ms). 큰 블록이 오면 0. */
+    public synchronized double getSilentMs() { return silentMs; }
+
     private void gateUpdate(short[] pcm, int frames) {
-        if (gateThresholdPct <= 0f || frames <= 0) return;
+        if (frames <= 0) return;
         double sl = 0, sr = 0;
         for (int f = 0; f < frames; f++) {
             double l = pcm[2 * f];
@@ -105,6 +149,11 @@ public final class ApexPcmPipeline {
         double pl = 100.0 * Math.sqrt(sl / frames) / 32768.0;
         double pr = 100.0 * Math.sqrt(sr / frames) / 32768.0;
         double ms = frames * 1000.0 / SAMPLE_RATE;
+        boolean quietAll = pl < SILENCE_PCT && pr < SILENCE_PCT;
+        if (gateThresholdPct <= 0f) {
+            if (quietAll) silentMs += ms; else silentMs = 0;
+            return;
+        }
         if (pl < gateThresholdPct) {
             gateQuietMsL += ms;
             if (gateQuietMsL >= GATE_HOLD_MS) gateClosedL = true;
@@ -119,6 +168,7 @@ public final class ApexPcmPipeline {
             gateQuietMsR = 0;
             gateClosedR = false;
         }
+        if (quietAll || (gateClosedL && gateClosedR)) silentMs += ms; else silentMs = 0;
     }
 
     private static float gateStep(float g, boolean closed) {
@@ -154,18 +204,18 @@ public final class ApexPcmPipeline {
             float l = pcm[2 * f];
             float r = pcm[2 * f + 1];
             bufL[pos] = l;
-            bufL[pos + TAPS] = l;
+            bufL[pos + taps] = l;
             bufR[pos] = r;
-            bufR[pos + TAPS] = r;
+            bufR[pos + taps] = r;
             int newest = pos;
-            pos = pos + 1 == TAPS ? 0 : pos + 1;
+            pos = pos + 1 == taps ? 0 : pos + 1;
             if (++phase == DECIMATION) {
                 phase = 0;
                 // time-ordered window: buf[newest+1 .. newest+TAPS] (oldest -> newest). H is symmetric.
                 float accL = 0f, accR = 0f;
                 int base = newest + 1;
-                for (int i = 0; i < TAPS; i++) {
-                    float h = H[i];
+                for (int i = 0; i < taps; i++) {
+                    float h = hh[i];
                     accL += h * bufL[base + i];
                     accR += h * bufR[base + i];
                 }
@@ -194,16 +244,28 @@ public final class ApexPcmPipeline {
     public synchronized int scale(float y) {
         int lim = Math.min(cap, ApexProtocol.MAX_AMPLITUDE);
         double in = y / 32768.0;
-        double x = in * lim * gain;
-        double ax = Math.abs(x);
+        double ax;
         double knee = KNEE * lim;
         boolean limited = false;
-        double o = ax;
-        if (lim > 0 && ax > knee) {
-            double room = lim - knee;
-            o = knee + room * Math.tanh((ax - knee) / room);
-            limited = true;
+        double o;
+        if (asbCurve) {
+            // ASB 곡선(Apex6PcmGain.h:8-22): y = g*x/(1+(g-1)|x|), x = s16/32768 in [-1,1], 끝점 ±1 -> 상한
+            double a = Math.min(1.0, Math.abs(in));
+            double yn = gain * a / (1.0 + (gain - 1.0) * a);
+            o = yn * lim;
+            ax = o;
+            limited = lim > 0 && o > knee;       // 상한의 80% 초과 = 압축 영역
+        } else {
+            double x = in * lim * gain;
+            ax = Math.abs(x);
+            o = ax;
+            if (lim > 0 && ax > knee) {
+                double room = lim - knee;
+                o = knee + room * Math.tanh((ax - knee) / room);
+                limited = true;
+            }
         }
+        double x = in < 0 ? -1 : 1;
         int v = (int) Math.round(x < 0 ? -o : o);
         v = Math.max(-lim, Math.min(lim, v));
         stN++;

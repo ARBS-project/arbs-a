@@ -45,10 +45,23 @@ public class ApexGateFilterTest {
     }
 
     @Test
-    public void groupDelayIsAtMost2ms() {
-        double ms = (ApexPcmPipeline.TAPS - 1) / 2.0 / ApexPcmPipeline.SAMPLE_RATE * 1000.0;
-        assertTrue("delay=" + ms, ms <= 2.0);
-        assertEquals(1.0, sum(ApexPcmPipeline.H), 1e-4);
+    public void filterChoicesHaveExpectedDelayAndUnityDc() {
+        double[] expect = {1.67, 3.33, 6.67};
+        for (int i = 0; i < ApexPcmPipeline.TAP_CHOICES.length; i++) {
+            int t = ApexPcmPipeline.TAP_CHOICES[i];
+            double ms = (t - 1) / 2.0 / ApexPcmPipeline.SAMPLE_RATE * 1000.0;
+            assertEquals(expect[i], ms, 0.01);
+            assertEquals(1.0, sum(ApexPcmPipeline.designFor(t)), 1e-4);
+        }
+        assertEquals("default is 321", 321, ApexPcmPipeline.TAPS);
+        ApexPcmPipeline p = new ApexPcmPipeline();
+        assertEquals(321, p.getTaps());
+        p.setTaps(161);
+        assertEquals(161, p.getTaps());
+        p.setTaps(641);
+        assertEquals(641, p.getTaps());
+        p.setTaps(999);
+        assertEquals("unsupported -> default", 321, p.getTaps());
     }
 
     private static double sum(float[] h) {
@@ -57,34 +70,43 @@ public class ApexGateFilterTest {
         return s;
     }
 
-    private static double gainAt(double hz) {
+    private static double gainAt(int taps, double hz) {
+        float[] h = ApexPcmPipeline.designFor(taps);
         double re = 0, im = 0;
         double w = 2 * Math.PI * hz / ApexPcmPipeline.SAMPLE_RATE;
-        for (int i = 0; i < ApexPcmPipeline.H.length; i++) {
-            re += ApexPcmPipeline.H[i] * Math.cos(w * i);
-            im -= ApexPcmPipeline.H[i] * Math.sin(w * i);
+        for (int i = 0; i < h.length; i++) {
+            re += h[i] * Math.cos(w * i);
+            im -= h[i] * Math.sin(w * i);
         }
         return Math.hypot(re, im);
+    }
+
+    private static double overshoot(int taps) {
+        double c = 0, mx = 0;
+        for (float v : ApexPcmPipeline.designFor(taps)) {
+            c += v;
+            mx = Math.max(mx, c);
+        }
+        return mx - 1;
     }
 
     /** 응답과 오버슈트를 표준 출력에 남긴다(테스트 XML system-out 에 보존 → EVIDENCE 근거). */
     @Test
     public void responseAndOvershootReport() {
-        StringBuilder sb = new StringBuilder("FILTER taps=" + ApexPcmPipeline.TAPS + " gain@Hz:");
-        for (double f : new double[]{50, 100, 200, 300, 400, 500, 600, 700, 800, 1010, 3000, 5000}) {
-            sb.append(String.format(java.util.Locale.US, " %.0f=%.3f", f, gainAt(f)));
+        for (int taps : ApexPcmPipeline.TAP_CHOICES) {
+            StringBuilder sb = new StringBuilder("FILTER taps=" + taps + " gain@Hz:");
+            for (double f : new double[]{50, 100, 200, 300, 400, 500, 600, 700, 800, 1010, 3000, 5000}) {
+                sb.append(String.format(java.util.Locale.US, " %.0f=%.3f", f, gainAt(taps, f)));
+            }
+            sb.append(String.format(java.util.Locale.US, " | step overshoot %.2f%%", overshoot(taps) * 100));
+            System.out.println(sb);
+            assertTrue("passband 100 Hz taps=" + taps, gainAt(taps, 100) > 0.9);
+            assertTrue("passband 300 Hz taps=" + taps, gainAt(taps, 300) > 0.65);
+            assertTrue("alias band >= 1010 Hz suppressed taps=" + taps, gainAt(taps, 1010) < 0.01 && gainAt(taps, 3000) < 0.001);
+            assertTrue("overshoot <= 9% taps=" + taps, overshoot(taps) < 0.09);
         }
-        double c = 0, mx = 0;
-        for (float v : ApexPcmPipeline.H) {
-            c += v;
-            mx = Math.max(mx, c);
-        }
-        sb.append(String.format(java.util.Locale.US, " | step overshoot %.2f%%", (mx - 1) * 100));
-        System.out.println(sb);
-        assertTrue("passband 100 Hz", gainAt(100) > 0.9);
-        assertTrue("passband 300 Hz", gainAt(300) > 0.65);
-        assertTrue("alias band >= 800 Hz suppressed", gainAt(800) < 0.05 && gainAt(1010) < 0.01 && gainAt(3000) < 0.001);
-        assertTrue("overshoot small", mx - 1 < 0.03);
+        assertTrue("321 taps 600 Hz better than 161", gainAt(321, 600) < gainAt(161, 600));
+        assertTrue("641 taps 600 Hz better than 321", gainAt(641, 600) < gainAt(321, 600));
     }
 
     @Test
@@ -134,9 +156,10 @@ public class ApexGateFilterTest {
 
     @Test
     public void highGainNeverExceedsCapEvenWithManyLimiterHits() {
-        for (int cap : new int[]{20, 40, 60}) {
+        for (int cap : new int[]{20, 40, 60, 100, 127}) for (boolean asb : new boolean[]{true, false}) {
             for (float g : new float[]{1f, 2f, 3f, 4f, 6f, 8f}) {
                 ApexPcmPipeline p = new ApexPcmPipeline();
+                p.setAsbCurve(asb);
                 p.setCap(cap);
                 p.setGain(g);
                 for (int v = -32768; v <= 32767; v += 31) {

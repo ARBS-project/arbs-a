@@ -134,9 +134,11 @@ public class PreferenceConfiguration {
     public boolean arbsApexFirst = true; // ARBS A1-2
     public boolean arbsInputDiag; // ARBS A1-2b
     public int arbsApexAmp = 40; // ARBS A1-2 (0..60 of 127)
-    public float arbsApexGain = 3.0f; // ARBS A1-3d (1.0..8.0, default 3.0)
-    public float arbsGatePct = 2.0f; // ARBS A1-3d noise gate threshold %FS (0 = off)
-    public int arbsKeepaliveMs = 50; // ARBS A1-3d silence keepalive interval (50 / 200)
+    public float arbsApexGain = 4.0f; // ARBS A1-3e (1.0..8.0, default 4.0 with the ASB curve)
+    public float arbsGatePct = 0.0f; // ARBS A1-3e noise gate threshold %FS (0 = off, default)
+    public int arbsSilenceMode = 1; // ARBS A1-3e silence handling 1..4
+    public boolean arbsAsbCurve = true; // ARBS A1-3e amplification curve (ASB / tanh)
+    public int arbsFilterTaps = 321; // ARBS A1-3e 161 / 321 / 641
     public int arbsJitterFixed = 0; // ARBS A1-3c (0 = auto, 16..80 fixed ms)
     public boolean onscreenController;
     public boolean onlyL3R3;
@@ -589,21 +591,32 @@ public class PreferenceConfiguration {
         config.arbsInputDiag = prefs.getBoolean("checkbox_arbs_input_diag", false);
         config.arbsApexFirst = prefs.getBoolean("checkbox_arbs_apex_first", true);
         try {
-            config.arbsApexAmp = Math.max(0, Math.min(60, Integer.parseInt(prefs.getString("list_arbs_apex_amp", "40"))));
+            config.arbsApexAmp = Math.max(0, Math.min(127, Integer.parseInt(prefs.getString("list_arbs_apex_amp", "40"))));
         } catch (NumberFormatException e) {
             config.arbsApexAmp = 40;
         }
         try {
-            config.arbsApexGain = Math.max(1.0f, Math.min(8.0f, Float.parseFloat(prefs.getString("list_arbs_apex_gain", "3.0"))));
+            config.arbsApexGain = Math.max(1.0f, Math.min(8.0f, Float.parseFloat(prefs.getString("list_arbs_apex_gain", "4.0"))));
         } catch (NumberFormatException e) {
-            config.arbsApexGain = 3.0f;
+            config.arbsApexGain = 4.0f;
         }
         try {
-            config.arbsGatePct = Math.max(0f, Math.min(4f, Float.parseFloat(prefs.getString("list_arbs_gate", "2"))));
+            config.arbsGatePct = Math.max(0f, Math.min(4f, Float.parseFloat(prefs.getString("list_arbs_gate", "0"))));
         } catch (NumberFormatException e) {
-            config.arbsGatePct = 2.0f;
+            config.arbsGatePct = 0.0f;
         }
-        config.arbsKeepaliveMs = "200".equals(prefs.getString("list_arbs_keepalive", "50")) ? 200 : 50;
+        try {
+            config.arbsSilenceMode = Math.max(1, Math.min(4, Integer.parseInt(prefs.getString("list_arbs_silence_mode", "1"))));
+        } catch (NumberFormatException e) {
+            config.arbsSilenceMode = 1;
+        }
+        config.arbsAsbCurve = !"tanh".equals(prefs.getString("list_arbs_curve", "asb"));
+        try {
+            int ft = Integer.parseInt(prefs.getString("list_arbs_filter", "321"));
+            config.arbsFilterTaps = (ft == 161 || ft == 641) ? ft : 321;
+        } catch (NumberFormatException e) {
+            config.arbsFilterTaps = 321;
+        }
         try {
             int jf = Integer.parseInt(prefs.getString("list_arbs_jitter_fixed", "0"));
             config.arbsJitterFixed = jf <= 0 ? 0 : Math.max(16, Math.min(80, jf));

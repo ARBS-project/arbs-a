@@ -43,9 +43,12 @@ public final class ApexRumbleSynth {
         return false;
     }
 
-    /** 진폭 = round(값8/255 x cap), 0..min(cap, 60). */
+    /** ASB rumble 사인 최대 진폭(Apex6HapticBridge.cpp:86). */
+    public static final int ASB_RUMBLE_MAX = 112;
+
+    /** A1-3e: 진폭 = round(값8/255 x min(cap, 112)), cap 은 0..127 로 제한(ASB 최댓값 112 와 맞춤). */
     public static int amplitude(int value8, int cap) {
-        int c = Math.max(0, Math.min(ApexProtocol.MAX_AMPLITUDE, cap));
+        int c = Math.max(0, Math.min(ASB_RUMBLE_MAX, Math.min(ApexProtocol.MAX_AMPLITUDE, cap)));
         return (int) Math.round(Math.max(0, Math.min(255, value8)) / 255.0 * c);
     }
 

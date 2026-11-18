@@ -222,21 +222,35 @@
             android:summary="@string/summary_arbs_apex_gain"
             android:entries="@array/arbs_apex_gain_names"
             android:entryValues="@array/arbs_apex_gain_values"
-            android:defaultValue="3.0" />
+            android:defaultValue="4.0" />
         <ListPreference
             android:key="list_arbs_gate"
             android:title="@string/title_arbs_gate"
             android:summary="@string/summary_arbs_gate"
             android:entries="@array/arbs_gate_names"
             android:entryValues="@array/arbs_gate_values"
-            android:defaultValue="2" />
+            android:defaultValue="0" />
         <ListPreference
-            android:key="list_arbs_keepalive"
-            android:title="@string/title_arbs_keepalive"
-            android:summary="@string/summary_arbs_keepalive"
-            android:entries="@array/arbs_keepalive_names"
-            android:entryValues="@array/arbs_keepalive_values"
-            android:defaultValue="50" />
+            android:key="list_arbs_silence_mode"
+            android:title="@string/title_arbs_silence_mode"
+            android:summary="@string/summary_arbs_silence_mode"
+            android:entries="@array/arbs_silence_mode_names"
+            android:entryValues="@array/arbs_silence_mode_values"
+            android:defaultValue="1" />
+        <ListPreference
+            android:key="list_arbs_curve"
+            android:title="@string/title_arbs_curve"
+            android:summary="@string/summary_arbs_curve"
+            android:entries="@array/arbs_curve_names"
+            android:entryValues="@array/arbs_curve_values"
+            android:defaultValue="asb" />
+        <ListPreference
+            android:key="list_arbs_filter"
+            android:title="@string/title_arbs_filter"
+            android:summary="@string/summary_arbs_filter"
+            android:entries="@array/arbs_filter_names"
+            android:entryValues="@array/arbs_filter_values"
+            android:defaultValue="321" />
         <ListPreference
             android:key="list_arbs_jitter_fixed"
             android:title="@string/title_arbs_jitter_fixed"

@@ -24,8 +24,8 @@ public final class ApexProtocol {
     public static final int CMD_MOTOR_ROUTE = 0x53;
     public static final int CMD_REALTIME = 0x57;
     public static final int ROUTE_MUTE = 3;
-    /** 하드 상한(0..127 중). 사용자 승인: 60/127. */
-    public static final int MAX_AMPLITUDE = 60;
+    /** 하드 상한(int8 ±127, ASB와 동일). 사용자 승인: EA-APR-04(A1-3e)로 60 -> 127. 설정 기본값은 40. */
+    public static final int MAX_AMPLITUDE = 127;
     public static final int SUBFRAMES = 8;
     public static final int FRAME_MS = 8;
     public static final int ENABLE_WAIT_MS = 94;
@@ -69,7 +69,7 @@ public final class ApexProtocol {
         };
     }
 
-    /** 0x57 그립 전용 프레임: 서브프레임 8개 signed 값, 한 값이라도 +-{@link #MAX_AMPLITUDE} 를 넘으면 예외. */
+    /** 0x57 그립 전용 프레임: 서브프레임 8개 signed 값(int8 +128), 한 값이라도 +-{@link #MAX_AMPLITUDE}(127) 를 넘으면 예외. */
     public static byte[] gripFrame(int[] left, int[] right) {
         if (left.length != SUBFRAMES || right.length != SUBFRAMES) throw new IllegalArgumentException("서브프레임은 8개");
         int[] p = new int[25];
