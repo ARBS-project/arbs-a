@@ -38,6 +38,8 @@ static jmethodID BridgeClSetHdrModeMethod;
 static jmethodID BridgeClRumbleTriggersMethod;
 static jmethodID BridgeClSetMotionEventStateMethod;
 static jmethodID BridgeClSetControllerLEDMethod;
+static jmethodID BridgeClControllerHapticsMethod; // ARBS A1-1 (log only)
+static jmethodID BridgeClSetAdaptiveTriggersMethod; // ARBS A1-1 (log only)
 static jbyteArray DecodedFrameBuffer;
 static jshortArray DecodedAudioBuffer;
 
@@ -102,6 +104,8 @@ Java_com_limelight_nvstream_jni_MoonBridge_init(JNIEnv *env, jclass clazz) {
     BridgeClRumbleTriggersMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClRumbleTriggers", "(SSS)V");
     BridgeClSetMotionEventStateMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClSetMotionEventState", "(SBS)V");
     BridgeClSetControllerLEDMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClSetControllerLED", "(SBBB)V");
+    BridgeClControllerHapticsMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClControllerHaptics", "(SISS)V");
+    BridgeClSetAdaptiveTriggersMethod = (*env)->GetStaticMethodID(env, clazz, "bridgeClSetAdaptiveTriggers", "(SBBB[B[B)V");
 }
 
 int BridgeDrSetup(int videoFormat, int width, int height, int redrawRate, void* context, int drFlags) {
@@ -389,6 +393,45 @@ void BridgeClSetControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, u
     }
 }
 
+// ARBS A1-1: PCM haptics callback (control receive thread, must not block). Log only: reads the borrowed
+// buffer once to compute the peak amplitude, calls a primitive-only Java method, retains nothing.
+void BridgeClControllerHaptics(uint16_t controllerNumber, uint32_t sequence, const uint8_t* pcm, uint16_t frames) {
+    JNIEnv* env = GetThreadEnv();
+    int peak = 0;
+    const int16_t* samples = (const int16_t*)pcm; // 48 kHz S16LE stereo, little-endian host (ARM/x86)
+    for (unsigned i = 0; i < (unsigned)frames * 2; i++) {
+        int v = samples[i];
+        if (v < 0) v = -v;
+        if (v > peak) peak = v;
+    }
+    if (peak > 32767) peak = 32767;
+    (*env)->CallStaticVoidMethod(env, GlobalBridgeClass, BridgeClControllerHapticsMethod,
+                                 (jshort)controllerNumber, (jint)sequence, (jshort)frames, (jshort)peak);
+    if ((*env)->ExceptionCheck(env)) {
+        // We will crash here
+        (*JVM)->DetachCurrentThread(JVM);
+    }
+}
+
+// ARBS A1-1: adaptive trigger effect callback. Log only: payloads are copied into Java arrays.
+void BridgeClSetAdaptiveTriggers(uint16_t controllerNumber, uint8_t eventFlags, uint8_t typeLeft, uint8_t typeRight, uint8_t* left, uint8_t* right) {
+    JNIEnv* env = GetThreadEnv();
+    jbyteArray l = (*env)->NewByteArray(env, DS_EFFECT_PAYLOAD_SIZE);
+    jbyteArray r = (*env)->NewByteArray(env, DS_EFFECT_PAYLOAD_SIZE);
+    if (l != NULL && r != NULL) {
+        if (left != NULL) (*env)->SetByteArrayRegion(env, l, 0, DS_EFFECT_PAYLOAD_SIZE, (const jbyte*)left);
+        if (right != NULL) (*env)->SetByteArrayRegion(env, r, 0, DS_EFFECT_PAYLOAD_SIZE, (const jbyte*)right);
+        (*env)->CallStaticVoidMethod(env, GlobalBridgeClass, BridgeClSetAdaptiveTriggersMethod,
+                                     (jshort)controllerNumber, (jbyte)eventFlags, (jbyte)typeLeft, (jbyte)typeRight, l, r);
+    }
+    if (l != NULL) (*env)->DeleteLocalRef(env, l);
+    if (r != NULL) (*env)->DeleteLocalRef(env, r);
+    if ((*env)->ExceptionCheck(env)) {
+        // We will crash here
+        (*JVM)->DetachCurrentThread(JVM);
+    }
+}
+
 void BridgeClLogMessage(const char* format, ...) {
     va_list va;
     va_start(va, format);
@@ -426,6 +469,8 @@ static CONNECTION_LISTENER_CALLBACKS BridgeConnListenerCallbacks = {
         .rumbleTriggers = BridgeClRumbleTriggers,
         .setMotionEventState = BridgeClSetMotionEventState,
         .setControllerLED = BridgeClSetControllerLED,
+        .setAdaptiveTriggers = BridgeClSetAdaptiveTriggers, // ARBS A1-1 (log only)
+        .controllerHaptics = BridgeClControllerHaptics,     // ARBS A1-1 (log only)
 };
 
 static bool

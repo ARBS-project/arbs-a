@@ -113,6 +113,7 @@ public class MoonBridge {
     public static final short LI_CCAP_BATTERY_STATE   = 0x40;
     public static final short LI_CCAP_RGB_LED         = 0x80;
     public static final short LI_CCAP_DUAL_TOUCHPAD   = 0x100;
+    public static final short LI_CCAP_HAPTICS_PCM     = (short) 0x8000; // Nonary/Vibepollo extension (ARBS A1-1)
 
     public static final byte LI_MOTION_TYPE_ACCEL = 0x01;
     public static final byte LI_MOTION_TYPE_GYRO  = 0x02;
@@ -280,13 +281,27 @@ public class MoonBridge {
         }
     }
 
+    // ARBS A1-1: log-only callbacks (no output to any device)
+    public static void bridgeClControllerHaptics(short controllerNumber, int sequence, short frames, short peak) {
+        com.limelight.arbs.ArbsFeedbackLog.onHaptics(controllerNumber, sequence, frames, peak);
+    }
+
+    public static void bridgeClSetAdaptiveTriggers(short controllerNumber, byte eventFlags, byte typeLeft, byte typeRight, byte[] left, byte[] right) {
+        com.limelight.arbs.ArbsFeedbackLog.onAdaptiveTriggers(controllerNumber, eventFlags, typeLeft, typeRight, left, right);
+    }
+
     public static void bridgeClConnectionStarted() {
+        com.limelight.arbs.ArbsLog a = com.limelight.arbs.ArbsLog.peek();
+        if (a != null) a.line("연결 시작(connectionStarted)");
         if (connectionListener != null) {
             connectionListener.connectionStarted();
         }
     }
 
     public static void bridgeClConnectionTerminated(int errorCode) {
+        com.limelight.arbs.ArbsFeedbackLog.flush("연결 종료 code=" + errorCode);
+        com.limelight.arbs.ArbsLog a = com.limelight.arbs.ArbsLog.peek();
+        if (a != null) a.line("연결 종료(connectionTerminated) code=" + errorCode);
         if (connectionListener != null) {
             connectionListener.connectionTerminated(errorCode);
         }

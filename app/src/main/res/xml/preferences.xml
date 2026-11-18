@@ -193,6 +193,17 @@
             />
 
     </PreferenceCategory>
+    <PreferenceCategory android:title="@string/category_arbs" android:key="category_arbs">
+        <CheckBoxPreference
+            android:key="checkbox_arbs_haptics_test"
+            android:title="@string/title_arbs_haptics_test"
+            android:summary="@string/summary_arbs_haptics_test"
+            android:defaultValue="false" />
+        <Preference
+            android:key="arbs_open_log"
+            android:title="@string/title_arbs_open_log"
+            android:summary="@string/summary_arbs_open_log" />
+    </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_host_settings">
         <CheckBoxPreference
             android:key="checkbox_enable_sops"

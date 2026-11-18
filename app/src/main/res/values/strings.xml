@@ -230,6 +230,11 @@
     <string name="summary_checkbox_small_icon_mode">Smaller box art in the app grid allows more apps to be visible on screen</string>
 
     <string name="category_host_settings">Host Settings</string>
+    <string name="category_arbs">ARBS (A1-1 test)</string>
+    <string name="title_arbs_haptics_test">Report PS controller with HD haptics (test)</string>
+    <string name="summary_arbs_haptics_test">Test only: tells the host this controller is a PlayStation pad with PCM haptics so the host sends haptics. They are only logged, never output. Off = normal behavior.</string>
+    <string name="title_arbs_open_log">ARBS log</string>
+    <string name="summary_arbs_open_log">View, save to Downloads or copy the receive log</string>
     <string name="title_checkbox_enable_sops">Optimize game settings</string>
     <string name="summary_checkbox_enable_sops">Allow GFE to modify game settings for optimal streaming</string>
     <string name="title_checkbox_host_audio">Play audio on PC</string>

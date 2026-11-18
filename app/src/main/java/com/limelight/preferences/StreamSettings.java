@@ -275,6 +275,16 @@ public class StreamSettings extends Activity {
             super.onCreate(savedInstanceState);
 
             addPreferencesFromResource(R.xml.preferences);
+
+            // ARBS A1-1: log screen entry
+            com.limelight.arbs.ArbsLog.get(getActivity());
+            findPreference("arbs_open_log").setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
+                @Override
+                public boolean onPreferenceClick(Preference preference) {
+                    startActivity(new android.content.Intent(getActivity(), com.limelight.arbs.ArbsLogActivity.class));
+                    return true;
+                }
+            });
             PreferenceScreen screen = getPreferenceScreen();
 
             // hide on-screen controls category on non touch screen devices

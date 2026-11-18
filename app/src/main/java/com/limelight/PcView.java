@@ -185,6 +185,7 @@ public class PcView extends Activity implements AdapterFragmentCallbacks {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        com.limelight.arbs.ArbsLog.get(this); // ARBS A1-1
 
         // Assume we're in the foreground when created to avoid a race
         // between binding to CMS and onResume()

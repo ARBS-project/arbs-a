@@ -184,6 +184,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        com.limelight.arbs.ArbsLog.get(this); // ARBS A1-1
 
         UiHelper.setLocale(this);
 

@@ -1074,6 +1074,16 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         }
     }
 
+    /** ARBS A1-1: 어떤 컨트롤러가 어떤 type/capability 로 호스트에 보고되는지 로그(IP·토큰 없음). */
+    private void arbsLogArrival(String source, int vid, int pid, short number, byte reportedType, int buttons, short caps, byte detectedType) {
+        try {
+            com.limelight.arbs.ArbsLog.get(activityContext).line(String.format(java.util.Locale.US,
+                "컨트롤러 도착: %s vid=%04X pid=%04X 번호=%d 보고type=%d(감지 %d) capabilities=0x%04X buttons=0x%X 활성마스크=0x%X haptics광고=%s 시험모드=%s",
+                source, vid & 0xFFFF, pid & 0xFFFF, number, reportedType, detectedType, caps & 0xFFFF, buttons, getActiveControllerMask(),
+                (caps & MoonBridge.LI_CCAP_HAPTICS_PCM) != 0, prefConfig.arbsHapticsTest));
+        } catch (Throwable ignored) { }
+    }
+
     private short getActiveControllerMask() {
         if (prefConfig.multiController) {
             return (short)(currentControllers | initialControllers | (prefConfig.onscreenController ? 1 : 0));
@@ -3206,6 +3216,14 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                 }
             }
 
+            // ARBS A1-1: optional test mode so the host sends PCM haptics to this (built-in) controller;
+            // the callbacks only log. Off by default; changes only what this client reports.
+            if (prefConfig.arbsHapticsTest) {
+                reportedType = MoonBridge.LI_CTYPE_PS;
+                capabilities |= MoonBridge.LI_CCAP_HAPTICS_PCM;
+            }
+            arbsLogArrival("InputDevice " + name, vendorId, productId, controllerNumber, reportedType, supportedButtonFlags, capabilities, type);
+
             conn.sendControllerArrivalEvent((byte)controllerNumber, getActiveControllerMask(),
                     reportedType, supportedButtonFlags, capabilities);
 
@@ -3294,6 +3312,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
         @Override
         public void sendControllerArrival() {
+            arbsLogArrival("UsbDriver", vendorId, productId, controllerNumber, device.getType(), device.getSupportedButtonFlags(), device.getCapabilities(), device.getType());
             conn.sendControllerArrivalEvent((byte)controllerNumber, getActiveControllerMask(),
                     device.getType(), device.getSupportedButtonFlags(), device.getCapabilities());
         }
