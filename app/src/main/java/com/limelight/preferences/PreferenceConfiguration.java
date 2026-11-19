@@ -134,6 +134,7 @@ public class PreferenceConfiguration {
     public boolean arbsHapticsTest; // ARBS A1-1
     public boolean arbsApexFirst = true; // ARBS A1-2
     public boolean arbsInputDiag; // ARBS A1-2b
+    public boolean arbsVerboseLog; // ARBS A1-5 detailed log (per-second lines even above 20 MB)
     public int arbsApexAmp = 127; // ARBS A1-4 (0..127, default = ASB full scale)
     public float arbsApexGain = 1.0f; // ARBS A1-4 (1.0..8.0, default 1.0 = ASB gain 100%)
     public boolean arbsTriggerHaptics = true; // ARBS A1-4 APEX trigger haptics
@@ -593,6 +594,7 @@ public class PreferenceConfiguration {
         // ARBS A1-4b: 모든 ARBS 설정은 안전 읽기(자료형·허용 목록이 틀리면 ASB 기본값)
         config.arbsHapticsTest = ArbsSettings.getBool(prefs, "checkbox_arbs_haptics_test");
         config.arbsInputDiag = ArbsSettings.getBool(prefs, "checkbox_arbs_input_diag");
+        config.arbsVerboseLog = ArbsSettings.getBool(prefs, "checkbox_arbs_verbose_log");
         config.arbsApexFirst = ArbsSettings.getBool(prefs, "checkbox_arbs_apex_first");
         config.arbsApexAmp = ArbsSettings.getInt(prefs, "list_arbs_apex_amp");
         config.arbsApexGain = ArbsSettings.getFloat(prefs, "list_arbs_apex_gain");

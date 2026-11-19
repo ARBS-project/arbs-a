@@ -57,6 +57,7 @@ public final class ArbsSettings {
         b("checkbox_arbs_haptics_test", false);
         b("checkbox_arbs_apex_first", true);
         b("checkbox_arbs_input_diag", false);
+        b("checkbox_arbs_verbose_log", false);
         l("list_arbs_apex_amp", "127", "0", "10", "20", "30", "40", "50", "60", "80", "100", "127");
         l("list_arbs_apex_gain", "1.0", "1.0", "2.0", "3.0", "4.0", "6.0", "8.0");
         l("list_arbs_gate", "0", "0", "1", "2", "4");

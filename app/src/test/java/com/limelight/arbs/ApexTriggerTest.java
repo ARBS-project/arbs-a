@@ -305,24 +305,20 @@ public class ApexTriggerTest {
     }
 
     @Test
-    public void effectWithoutRefreshTimesOutAfter3Seconds() {
+    public void effectIsNotReleasedWithoutRefresh_asbParity() {
+        // A1-5: ASB 처럼 무갱신 시간 제한 없음 - 해제는 Off 수신 100 ms 후 또는 정지(clear)뿐
         ApexTriggerBridge b = new ApexTriggerBridge();
         b.onEffect(true, 0x26, payload(0xFE, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 130), 0);
         ApexTriggerBridge.Out o = new ApexTriggerBridge.Out();
         b.setPosition(255, 0);
-        b.render(2_900 * MS, o);
-        assertTrue(b.anyEffect());
-        assertNull(o.timeoutNote);
         b.render(3_100 * MS, o);
-        assertFalse(b.anyEffect());
-        assertNotNull(o.timeoutNote);
-        assertEquals(1, b.stats()[7]);
-        // 갱신(중복 포함)이 오면 타이머가 새로 시작
-        ApexTriggerBridge c = new ApexTriggerBridge();
-        c.onEffect(true, 0x26, payload(0xFE, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 130), 0);
-        c.onEffect(true, 0x26, payload(0xFE, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 130), 2_500 * MS);
-        c.render(5_000 * MS, o);
-        assertTrue(c.anyEffect());
+        assertTrue("3 초가 지나도 유지", b.anyEffect());
+        b.render(60_000 * MS, o);
+        assertTrue("60 초가 지나도 유지", b.anyEffect());
+        assertTrue(o.enabled);
+        assertEquals(0, b.stats()[7]);
+        b.clear();
+        assertFalse("정지 경로로는 해제", b.anyEffect());
     }
 
     @Test

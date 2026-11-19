@@ -22,7 +22,10 @@ import java.util.Locale;
  */
 public final class ArbsLog {
     private static final int TAIL_LINES = 400;
-    private static final long MAX_FILE_BYTES = 4L * 1024 * 1024;
+    /** A1-5: 장시간 시험을 위해 4 MB -> 40 MB. 20 MB 를 넘으면 1초 줄은 생략된다(ArbsSessionStats.perSecondAllowed). */
+    private static final long MAX_FILE_BYTES = 40L * 1024 * 1024;
+    /** A1-5 "상세 로그" 설정(세션 시작 때 갱신). 켜면 파일이 커도 1초 줄을 계속 기록. */
+    public static volatile boolean verbose;
 
     private static ArbsLog instance;
 
@@ -67,6 +70,14 @@ public final class ArbsLog {
             written += b.length;
         } catch (IOException ignored) {
         }
+    }
+
+    public synchronized long bytesWritten() { return written; }
+
+    /** 1초 단위 줄을 기록해도 되는가(A1-5): 로그 20 MB 이하이거나 상세 로그 켬. */
+    public static boolean perSecondAllowed() {
+        ArbsLog a = peek();
+        return a == null || ArbsSessionStats.perSecondAllowed(a.bytesWritten(), verbose);
     }
 
     public synchronized String tailText() {

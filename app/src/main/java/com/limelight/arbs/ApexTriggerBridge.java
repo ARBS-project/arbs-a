@@ -8,11 +8,10 @@ package com.limelight.arbs;
  *  - 블록 렌더(세기 % -> 상한 -> 활성 -> 중재 -> route/샘플)  renderBlock :782-1049 (트리거 부분 :853-884, :973-978, :991-1048)
  *  - 중재(Mix)                       Apex6DualArbiter::next :253-352, 상수 Apex6HapticBridge.h:89-98
  * 펌웨어 정책(0x53 sub 0x04)·Priority 정책은 이식하지 않았다(ASB 기본값은 Mix, h:70).
- * ARBS 안전 규칙(A1-4 지시): 같은 쪽 효과 이벤트가 [EFFECT_TIMEOUT_MS](3 s) 동안 없으면 해제한다 - ASB 에는 이 규칙이 없다(근거 없음 -> 지시의 기본값).
+ * A1-5: A1-4 의 3초 무갱신 해제는 제거했다(ASB 와 동일: 해제는 Off 수신 100 ms 후 + 정지 경로만).
  * 호출 스레드가 여럿(수신 콜백, 입력 읽기, 엔진)이라 공개 메서드는 모두 synchronized 이다. 안드로이드 의존성 없음.
  */
 public final class ApexTriggerBridge {
-    public static final long EFFECT_TIMEOUT_MS = 3000;
     static final long CLEAR_HOLD_MS = 100;            // kTriggerClearHold (cpp:22)
     static final int ENTRY_WINDOW = 3, YIELD_SILENT = 8, OWNER_HOLD = 32, MIX_RELEASE = 63, MIX_PEAK = 127;   // Apex6HapticBridge.h:89-94
     static final int L = ApexProtocol.ROUTE_LEFT, R = ApexProtocol.ROUTE_RIGHT, BOTH = ApexProtocol.ROUTE_BOTH, MUTE = ApexProtocol.ROUTE_MUTE;
@@ -23,8 +22,6 @@ public final class ApexTriggerBridge {
     private final int[] pos = new int[2];
     private final boolean[] pendingClear = new boolean[2];
     private final long[] pendingClearAt = new long[2];
-    private final long[] lastEventNs = new long[2];
-    private final boolean[] hasEvent = new boolean[2];
     private final boolean[] feedbackSeen = new boolean[2];
     private final long[] feedbackSeenAt = new long[2];
     private final long[] gen = new long[2], genSeen = new long[2];
@@ -38,7 +35,7 @@ public final class ApexTriggerBridge {
     private boolean episode;
 
     // 통계(1초 로그용)
-    public long updatesL, updatesR, activeUpdates, stops, unsupported, malformed, dedup, timeouts, weaponBreaks, bowBreaks;
+    public long updatesL, updatesR, activeUpdates, stops, unsupported, malformed, dedup, weaponBreaks, bowBreaks;
     public long limitedSamples, framesL, framesR, framesBoth, mixFrames;
     public int lastTypeL, lastTypeR;
 
@@ -56,7 +53,7 @@ public final class ApexTriggerBridge {
     /** 로그용 누계 스냅샷: [0]=수신L [1]=수신R [2]=적용 [3]=해제 [4]=미지원 [5]=형식오류 [6]=중복 [7]=타임아웃 [8]=weapon break [9]=bow break
      *  [10]=상한제한 샘플 [11..14]=프레임 L/R/Both/Mix [15,16]=마지막 type L/R. */
     public synchronized long[] stats() {
-        return new long[]{updatesL, updatesR, activeUpdates, stops, unsupported, malformed, dedup, timeouts, weaponBreaks, bowBreaks,
+        return new long[]{updatesL, updatesR, activeUpdates, stops, unsupported, malformed, dedup, 0L /*[7] 예약(A1-4 의 타임아웃 자리, A1-5 에서 제거)*/, weaponBreaks, bowBreaks,
                 limitedSamples, framesL, framesR, framesBoth, mixFrames, lastTypeL, lastTypeR};
     }
 
@@ -70,8 +67,6 @@ public final class ApexTriggerBridge {
             st[i].reset();
             pendingClear[i] = false;
             feedbackSeen[i] = false;
-            lastEventNs[i] = 0;
-            hasEvent[i] = false;
             gen[i] = genSeen[i] = 0;
         }
         sampleOffset = 0;
@@ -103,8 +98,6 @@ public final class ApexTriggerBridge {
             if (dec.code == ApexTriggerEffect.UNSUPPORTED) unsupported++;
             else malformed++;
         }
-        lastEventNs[s] = nowNs;      // 3 s 무갱신 타이머: 같은 쪽의 모든 이벤트(중복 포함)가 갱신
-        hasEvent[s] = true;
         ApexTriggerEffect target = eff[s];
         if (dec.code != ApexTriggerEffect.OK) {
             // 미지원/형식 오류: ASB 와 같이 Off 로 처리(즉시 해제). 증거를 위해 매번 로그.
@@ -149,7 +142,6 @@ public final class ApexTriggerBridge {
         /** ApexProtocol.ROUTE_* (enabled 일 때만 의미). */
         public int route = MUTE;
         public final int[] samples = new int[8];
-        public String timeoutNote;   // 타임아웃 해제가 일어났다면 로그 문구(1회성)
     }
 
     /**
@@ -158,7 +150,6 @@ public final class ApexTriggerBridge {
     public synchronized void render(long nowNs, Out out) {
         out.enabled = false;
         out.route = MUTE;
-        out.timeoutNote = null;
         java.util.Arrays.fill(out.samples, 0);
         for (int s = 0; s < 2; s++) {
             if (pendingClear[s] && nowNs >= pendingClearAt[s]) {
@@ -166,13 +157,6 @@ public final class ApexTriggerBridge {
                 eff[s] = new ApexTriggerEffect();
                 noteChange(s);
                 st[s].retarget();
-            }
-            if (!eff[s].isOff() && hasEvent[s] && nowNs - lastEventNs[s] > EFFECT_TIMEOUT_MS * 1_000_000L) {
-                eff[s] = new ApexTriggerEffect();
-                noteChange(s);
-                st[s].retarget();
-                timeouts++;
-                out.timeoutNote = "트리거 효과 3초 무갱신 -> 해제(" + (s == 0 ? "L" : "R") + ")";
             }
         }
         int[][] r = new int[2][8];

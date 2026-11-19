@@ -73,6 +73,7 @@ public final class ArbsCrashHandler implements Thread.UncaughtExceptionHandler {
             String header = "시각: " + ts + "\n기기: " + Build.MANUFACTURER + " " + Build.MODEL
                     + ", Android " + Build.VERSION.RELEASE + " (SDK " + Build.VERSION.SDK_INT + ")";
             ArbsLog log = ArbsLog.get(app);
+            try { ApexHaptics.get().onCrash(); } catch (Throwable ignored) { } // A1-5: 세션 요약에 크래시 1 표시
             String tail = log.tailText();
             String report = buildReport(t, thread == null ? "?" : thread.getName(), header, tail);
             String firstFrame = t.getStackTrace().length > 0 ? t.getStackTrace()[0].toString() : "";

@@ -1418,9 +1418,10 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                 if (ab.totalFramesReceived > 0 && ab.totalFrames > 0) {
                     VideoStatsFps abFps = ab.getFps();
                     long abRtt = MoonBridge.getEstimatedRttInfo();
+                    com.limelight.arbs.ApexHaptics.get().onMoonlightRtt((int) (abRtt >> 32)); // A1-5 요약용(항상)
                     float abHost = ab.framesWithHostProcessingLatency > 0
                             ? (float) ab.totalHostProcessingLatency / 10 / ab.framesWithHostProcessingLatency : -1f;
-                    com.limelight.arbs.ArbsLog.i(String.format(java.util.Locale.US,
+                    if (com.limelight.arbs.ArbsLog.perSecondAllowed()) com.limelight.arbs.ArbsLog.i(String.format(java.util.Locale.US,
                             "Moonlight 통계: 네트워크RTT=%dms 분산=%dms 디코드평균=%.1fms 수신fps=%.1f 렌더fps=%.1f 프레임손실=%.1f%% 호스트처리평균=%s",
                             (int) (abRtt >> 32), (int) abRtt, (float) ab.decoderTimeMs / ab.totalFramesReceived,
                             abFps.receivedFps, abFps.renderedFps, (float) ab.framesLost / ab.totalFrames * 100,

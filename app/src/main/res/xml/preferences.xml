@@ -209,6 +209,11 @@
             android:summary="@string/summary_arbs_apex_first"
             android:defaultValue="true" />
         <CheckBoxPreference
+            android:key="checkbox_arbs_verbose_log"
+            android:title="@string/title_arbs_verbose_log"
+            android:summary="@string/summary_arbs_verbose_log"
+            android:defaultValue="false" />
+        <CheckBoxPreference
             android:key="checkbox_arbs_input_diag"
             android:title="@string/title_arbs_input_diag"
             android:summary="@string/summary_arbs_input_diag"

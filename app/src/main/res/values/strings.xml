@@ -331,6 +331,8 @@
         <item>321</item>
         <item>641</item>
     </string-array>
+    <string name="title_arbs_verbose_log">Verbose log</string>
+    <string name="summary_arbs_verbose_log">Keeps the per-second log lines even when the log file exceeds 20 MB. Off = only the 1-minute summary after 20 MB. Applies when the next stream connects.</string>
     <string name="title_arbs_restore_defaults">Restore ASB defaults</string>
     <string name="summary_arbs_restore_defaults">Resets only the ARBS output items below to the ASB-based defaults (strength 127, gain 1.0, ASB curve, 321 taps, gate off, silence mode 1, jitter auto, trigger on/100%). Applies when the next stream connects.</string>
     <string name="toast_arbs_restore_defaults">ASB defaults restored. They apply when the next stream connects.</string>

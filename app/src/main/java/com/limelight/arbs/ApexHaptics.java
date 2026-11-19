@@ -48,6 +48,13 @@ public final class ApexHaptics {
     private final ApexScheduler sched = new ApexScheduler();
     /** ARBS A1-4: 트리거 효과 -> 트리거 채널(ASB Mix 경로 이식). */
     public final ApexTriggerBridge trig = new ApexTriggerBridge();
+    /** A1-5: 장시간 시험용 요약(출력 동작과 무관). */
+    public final ArbsSessionStats stats = new ArbsSessionStats();
+    private volatile boolean summaryEmitted = true;
+    private volatile int lastProbeBattery = -1;
+    private int attachCount;
+    private long rumbleBase;
+    private long[] trigBase = new long[17];
     private final ApexTriggerBridge.Out trigOut = new ApexTriggerBridge.Out();
     private volatile boolean triggerOn;
     private int trigTarget = ApexProtocol.ROUTE_BOTH, trigRelease;
@@ -90,6 +97,7 @@ public final class ApexHaptics {
     /** ApexController 가 IF0/IF2 claim 을 마친 뒤 호출. IF2 엔드포인트를 찾고 엔진 스레드를 시작한다. */
     public synchronized void attach(UsbDeviceConnection c, UsbDevice dev) {
         detach("재연결");
+        if (attachCount++ > 0) stats.add(ArbsSessionStats.RECONNECTS, 1);
         UsbInterface usbIf = null;
         for (int i = 0; i < dev.getInterfaceCount(); i++) if (dev.getInterface(i).getId() == IF_ID) usbIf = dev.getInterface(i);
         UsbEndpoint in = null, out = null;
@@ -216,6 +224,11 @@ public final class ApexHaptics {
         jitter.setFixed(jitterFixedMs);
         arrival.reset();
         userStopped = false;
+        stats.reset(System.nanoTime());                 // A1-5
+        stats.batteryStart(lastProbeBattery);
+        rumbleBase = totRumbleCalls;
+        trigBase = trig.stats();
+        summaryEmitted = false;
         sessionRunning = true;
         ArbsLog.i(String.format(Locale.US, "APEX 세션 시작: 상태=%s 진폭 상한=%d(하드 상한 %d) 이득 G=%.2f 곡선=%s 필터=%d탭(%.1fms) 게이트=%s 무음 처리=모드%d(keepalive %dms) 지터버퍼=%s",
                 state, pipe.getCap(), ApexProtocol.MAX_AMPLITUDE, gain, asbCurve ? "ASB" : "tanh", pipe.getTaps(),
@@ -253,6 +266,60 @@ public final class ApexHaptics {
         sessionRunning = false;
         stopReason = "세션 종료(" + reason + ")";
         waitInactive(600);
+        emitSessionSummary("세션 종료(" + reason + ")");   // 엔진이 활성이 아니었으면 여기서 출력(이미 출력했으면 무시)
+    }
+
+    /** A1-5: "상세 로그" 설정(세션 시작 전에 호출). */
+    public void setVerboseLog(boolean v) { ArbsLog.verbose = v; }
+
+    /** A1-5: Moonlight RTT 표본(Game 통계 스레드, 1초마다). */
+    public void onMoonlightRtt(int ms) {
+        if (sessionRunning && ms > 0) stats.addRtt(ms);
+    }
+
+    /** A1-5: 크래시 처리기에서 호출(최대한 안전하게). 진행 중인 세션의 요약 줄을 크래시 표시와 함께 남긴다. */
+    public void onCrash() {
+        stats.markCrash();
+        if (sessionRunning) emitSessionSummary("크래시");
+    }
+
+    private void syncExternalCounters() {
+        stats.set(ArbsSessionStats.RUMBLE_CALLS, totRumbleCalls - rumbleBase);
+        long[] c = trig.stats();
+        stats.set(ArbsSessionStats.TRIG_APPLIED, c[2] - trigBase[2]);
+        stats.set(ArbsSessionStats.TRIG_STOPS, c[3] - trigBase[3]);
+    }
+
+    private synchronized void emitSessionSummary(String reason) {
+        if (summaryEmitted) return;
+        summaryEmitted = true;
+        syncExternalCounters();
+        ArbsLog.i(stats.sessionLine(System.nanoTime(), reason));
+    }
+
+    private String sessionText() { return sessionRunning ? "연결됨" : "없음"; }
+
+    private String apexText() { return state + (active ? "/출력중" : "/대기") + (userStopped ? "/사용자정지" : ""); }
+
+    /** A1-5: 종료 직전 배터리 값. GetInfo 1회(기존 허용 프레임), 실패·예외는 무시하고 -1. */
+    private int queryBattery() {
+        try {
+            byte[] buf = rxBuf != null ? rxBuf : new byte[Math.max(epIn.getMaxPacketSize(), 64)];
+            byte[] req = ApexProtocol.buildGetInfo();
+            if (conn.bulkTransfer(epOut, req, req.length, 200) != req.length) return -1;
+            long t0 = SystemClock.uptimeMillis();
+            int tries = 0;
+            while (SystemClock.uptimeMillis() - t0 < 300 && tries < 32) {
+                tries++;
+                int n = conn.bulkTransfer(epIn, buf, buf.length, 50);
+                if (n > 0) {
+                    ApexProtocol.Info info = ApexProtocol.parse(buf, n);
+                    if (info != null && info.checksumOk) return info.battery;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return -1;
     }
 
     public void onPause() {
@@ -426,6 +493,7 @@ public final class ApexHaptics {
                 boolean catchingUp = dec.catchingUp;
                 now = System.nanoTime();
                 if (rumble.checkTimeout(now)) {
+                    stats.add(ArbsSessionStats.RUMBLE_TIMEOUTS, 1);
                     ArbsLog.i("APEX rumble 타임아웃(3초 무갱신) -> 진동 정지");
                 }
                 if (now - lastPcmNs > NO_PCM_NEUTRAL_MS * 1_000_000L) {
@@ -467,7 +535,6 @@ public final class ApexHaptics {
                 int trigRoute = ApexProtocol.ROUTE_MUTE;
                 if (triggerOn) {
                     trig.render(now, trigOut);
-                    if (trigOut.timeoutNote != null) ArbsLog.i("APEX " + trigOut.timeoutNote);
                     trigEnabled = trigOut.enabled;
                     trigRoute = trigOut.route;
                     if (trigEnabled && trigRoute != trigTarget) {
@@ -481,6 +548,7 @@ public final class ApexHaptics {
                     if (trigEnabled) {
                         trigRelease = TRIGGER_RELEASE_FRAMES;
                         trigFramesWin++;
+                        stats.add(ArbsSessionStats.TRIG_FRAMES, 1);
                     } else if (trigRelease > 0) {
                         trigRelease--;
                         trigEnabled = true;       // 해제 지연 4프레임: 영(0) 샘플을 Both 로 보내 잔류를 막음
@@ -572,6 +640,17 @@ public final class ApexHaptics {
         winForeign = 0;
         long drop = pipe.getAndResetDropped();
         int peak = pipe.getAndResetPeak();
+        // A1-5: 누계(요약용). 조용한 구간에도 센다.
+        stats.add(ArbsSessionStats.PCM_PKTS, packets);
+        stats.add(ArbsSessionStats.PCM_GAPS, gaps);
+        stats.add(ArbsSessionStats.DROPPED, drop);
+        stats.add(ArbsSessionStats.UNDERRUNS, underruns);
+        stats.add(ArbsSessionStats.GRIP_FRAMES, sentFrames);
+        stats.silenceMs(arrSnap.maxSilenceMs);
+        syncExternalCounters();
+        long nowStats = System.nanoTime();
+        if (stats.minuteDue(nowStats)) ArbsLog.i(stats.minuteLine(nowStats, sessionText(), apexText()));
+        final boolean perSec = ArbsLog.perSecondAllowed();   // 20 MB 초과 + 상세 로그 꺼짐이면 1초 줄 생략
         if (packets == 0 && driveFrames == 0 && rumbleFrames == 0 && sentFrames < 120 && gaps == 0) {
             // 조용한 구간은 로그를 아낀다(5초마다만)
             if (++quietTicks < 5) { resetWindow(); return; }
@@ -580,7 +659,7 @@ public final class ApexHaptics {
         long missed = sched.getAndResetMissed();
         long resyncs = sched.getAndResetResyncs();
         long catchups = sched.getAndResetCatchups();
-        ArbsLog.i(String.format(Locale.US,
+        if (perSec) ArbsLog.i(String.format(Locale.US,
                 "APEX 송신: %.0f프레임/초(구동 %d, 중립 %d, rumble %d) 큐=%d 폐기=%d 언더런=%d PCM=%d패킷 갭리셋=%d 타컨트롤러=%d 출력peak=%d/127 | "
                         + "bulk(0x57) 평균/최대=%.2f/%.2fms rx폴 평균/최대=%.2f/%.2fms 슬립오차 평균/최대=%.2f/%.2fms 놓친슬롯=%d 재동기=%d 따라잡기=%d rumble호출=%d(L=%d H=%d) 지터버퍼 목표=%dms 재충전=%d 초과폐기=%d",
                 sentFrames / sec, driveFrames, neutralFrames, rumbleFrames, pipe.queueSize(), drop, underruns, packets, gaps, foreign, peak,
@@ -593,7 +672,8 @@ public final class ApexHaptics {
         double avgQ = qDepthN == 0 ? pipe.queueSize() : (double) qDepthSum / qDepthN;
         // 실제 지연 = 필터 군지연 + 재생 시점 평균 큐 깊이(1 샘플 = 1 ms) + 프레임 8 ms(모아서 송신). 버퍼 목표는 더하지 않는다(이미 큐에 반영).
         double est = filterMs + avgQ + ApexProtocol.FRAME_MS;
-        ArbsLog.i(String.format(Locale.US,
+        if (packets > 0) stats.addExtraDelay(est);
+        if (perSec) ArbsLog.i(String.format(Locale.US,
                 "APEX 레벨: 리미터동작 %.1f%% 상한도달 %.1f%% 게이트닫힘 %.1f%% 입력RMS %.1f%%FS 출력RMS %.1f(상한 대비 %.0f%%) 상한=%d 이득=%.2f 게이트=%.0f%% | "
                         + "PCM도착간격 평균/p95/최대=%.1f/%.1f/%.1fms 최대무수신=%.1fms | 무음 모드%d: 무음중 송신 %d 생략 %d(keepalive %dms) 비활성 %d회 재활성 %d회 | "
                         + "ARBS추가지연=%.1fms (필터 %.1f + 재생시점 큐 평균 %.1f + 프레임 %d) 버퍼목표=%dms%s",
@@ -617,12 +697,16 @@ public final class ApexHaptics {
         boolean changed = frames > 0;
         for (int i = 0; i < c.length; i++) if (c[i] != trigPrev[i]) changed = true;
         if (!changed) return;
+        if (!ArbsLog.perSecondAllowed()) {
+            System.arraycopy(c, 0, trigPrev, 0, Math.min(c.length, trigPrev.length));
+            return;
+        }
         ArbsLog.i(String.format(Locale.US,
                 "APEX 트리거: 수신 L=%d R=%d(적용 %d, 해제 %d, 중복 %d, 미지원 %d, 형식오류 %d) 마지막 type L=0x%02X R=0x%02X | 송신 트리거 프레임 %.0f/초(누계 L %d R %d Both %d Mix %d, route 전환 %d) | "
-                        + "무기/활 break %d 상한제한 샘플 %d 3초 무갱신 해제 %d | 세기 %d%%",
+                        + "무기/활 break %d 상한제한 샘플 %d | 세기 %d%%",
                 c[0] - trigPrev[0], c[1] - trigPrev[1], c[2] - trigPrev[2], c[3] - trigPrev[3], c[6] - trigPrev[6], c[4] - trigPrev[4], c[5] - trigPrev[5],
                 c[15], c[16], frames / sec, c[11], c[12], c[13], c[14], trigRetargets, c[8] + c[9] - trigPrev[8] - trigPrev[9], c[10] - trigPrev[10],
-                c[7] - trigPrev[7], trig.getStrengthPercent()));
+                trig.getStrengthPercent()));
         System.arraycopy(c, 0, trigPrev, 0, Math.min(c.length, trigPrev.length));
     }
 
@@ -657,6 +741,7 @@ public final class ApexHaptics {
             int result;
             do {
                 int n = policy.nextAttempt();
+                if (n > 1) stats.add(ArbsSessionStats.RETRIES, 1);
                 ArbsLog.i("APEX GetInfo 시도 " + n + "/" + ApexProbePolicy.MAX_ATTEMPTS);
                 result = probe();
                 if (result == 0) {
@@ -718,6 +803,7 @@ public final class ApexHaptics {
             return 1;
         }
         ArbsLog.i("APEX GetInfo: " + info.describe());
+        if (info.checksumOk) lastProbeBattery = info.battery;
         if (!info.checksumOk) {
             ArbsLog.i("APEX GetInfo 체크섬 불일치 - 재시도 대상");
             return 1;
@@ -773,9 +859,11 @@ public final class ApexHaptics {
         rumble.clear();   // 정지 후 재개 때 오래된 진동이 되살아나지 않게
         trig.clear();     // A1-4: 트리거 효과·중재 상태도 함께 초기화(정지 시퀀스의 `01 02 00` 이 트리거 채널을 비활성)
         trigRelease = 0;
+        if (!sessionRunning) stats.batteryEnd(queryBattery());   // A1-5: 세션 종료 시 정지 시퀀스 전에 GetInfo 1회(실패 무시)
         int ok = sendStopSequence();
         active = false;
         ArbsLog.i("APEX 정지 완료: 전송 성공 " + ok + "/5, PCM 비활성 중 수신 " + winInactive + "패킷");
+        if (!sessionRunning) emitSessionSummary(reason);
         winInactive = 0;
         drainRx();
     }
@@ -807,11 +895,13 @@ public final class ApexHaptics {
             int n = conn.bulkTransfer(epOut, f, f.length, 100);
             if (n != f.length) {
                 ArbsLog.i("APEX 송신 이상(" + label + "): 반환 " + n);
+                stats.add(ArbsSessionStats.USB_ERRORS, 1);
                 return false;
             }
             return true;
         } catch (Exception e) {
             ArbsLog.i("APEX 송신 예외(" + label + "): " + e.getClass().getSimpleName());
+            stats.add(ArbsSessionStats.USB_ERRORS, 1);
             return false;
         }
     }
