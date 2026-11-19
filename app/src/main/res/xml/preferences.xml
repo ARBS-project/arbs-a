@@ -194,6 +194,10 @@
 
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_arbs" android:key="category_arbs">
+        <Preference
+            android:key="arbs_restore_defaults"
+            android:title="@string/title_arbs_restore_defaults"
+            android:summary="@string/summary_arbs_restore_defaults" />
         <CheckBoxPreference
             android:key="checkbox_arbs_haptics_test"
             android:title="@string/title_arbs_haptics_test"
@@ -215,14 +219,14 @@
             android:summary="@string/summary_arbs_apex_amp"
             android:entries="@array/arbs_apex_amp_names"
             android:entryValues="@array/arbs_apex_amp_values"
-            android:defaultValue="40" />
+            android:defaultValue="127" />
         <ListPreference
             android:key="list_arbs_apex_gain"
             android:title="@string/title_arbs_apex_gain"
             android:summary="@string/summary_arbs_apex_gain"
             android:entries="@array/arbs_apex_gain_names"
             android:entryValues="@array/arbs_apex_gain_values"
-            android:defaultValue="4.0" />
+            android:defaultValue="1.0" />
         <ListPreference
             android:key="list_arbs_gate"
             android:title="@string/title_arbs_gate"
@@ -258,6 +262,18 @@
             android:entries="@array/arbs_jitter_fixed_names"
             android:entryValues="@array/arbs_jitter_fixed_values"
             android:defaultValue="0" />
+        <CheckBoxPreference
+            android:key="checkbox_arbs_trigger"
+            android:title="@string/title_arbs_trigger"
+            android:summary="@string/summary_arbs_trigger"
+            android:defaultValue="true" />
+        <ListPreference
+            android:key="list_arbs_trigger_strength"
+            android:title="@string/title_arbs_trigger_strength"
+            android:summary="@string/summary_arbs_trigger_strength"
+            android:entries="@array/arbs_trigger_strength_names"
+            android:entryValues="@array/arbs_trigger_strength_values"
+            android:defaultValue="100" />
         <Preference
             android:key="arbs_apex_status"
             android:title="@string/title_arbs_apex_status"

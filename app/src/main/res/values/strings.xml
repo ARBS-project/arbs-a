@@ -230,7 +230,7 @@
     <string name="summary_checkbox_small_icon_mode">Smaller box art in the app grid allows more apps to be visible on screen</string>
 
     <string name="category_host_settings">Host Settings</string>
-    <string name="category_arbs">ARBS (A1-2)</string>
+    <string name="category_arbs">ARBS (A1-4)</string>
     <string name="title_arbs_haptics_test">Report PS controller with HD haptics (test)</string>
     <string name="summary_arbs_haptics_test">Test only: tells the host this controller is a PlayStation pad with PCM haptics so the host sends haptics. They are only logged, never output. Off = normal behavior.</string>
     <string name="title_arbs_apex_first">APEX first (A1-2)</string>
@@ -238,18 +238,18 @@
     <string name="title_arbs_input_diag">APEX input diagnostic log</string>
     <string name="summary_arbs_input_diag">Log raw IF0 reports (changes only, max 20 lines/s) with parsed values and the values sent to the host. Default off.</string>
     <string name="title_arbs_apex_amp">APEX grip haptics strength</string>
-    <string name="summary_arbs_apex_amp">Maximum grip amplitude (maximum 127, same as ASB; default 40).</string>
+    <string name="summary_arbs_apex_amp">Maximum grip amplitude (maximum 127, same as ASB; default 127). Applies when the next stream connects.</string>
     <string-array name="arbs_apex_amp_names">
         <item>0 (off)</item>
         <item>10</item>
         <item>20</item>
         <item>30</item>
-        <item>40 (default)</item>
+        <item>40</item>
         <item>50</item>
         <item>60</item>
         <item>80</item>
         <item>100</item>
-        <item>127 (maximum, same as ASB)</item>
+        <item>127 (default, same as ASB)</item>
     </string-array>
     <string-array name="arbs_apex_amp_values">
         <item>0</item>
@@ -264,12 +264,12 @@
         <item>127</item>
     </string-array>
     <string name="title_arbs_apex_gain">APEX haptics gain</string>
-    <string name="summary_arbs_apex_gain">Gain before the soft limiter (the strength limit above is never exceeded). Default 4.0 (ASB curve).</string>
+    <string name="summary_arbs_apex_gain">Gain before the soft limiter (the strength limit above is never exceeded). Default 1.0 (ASB gain 100%). Applies when the next stream connects.</string>
     <string-array name="arbs_apex_gain_names">
-        <item>1.0</item>
+        <item>1.0 (default)</item>
         <item>2.0</item>
         <item>3.0</item>
-        <item>4.0 (default)</item>
+        <item>4.0</item>
         <item>6.0</item>
         <item>8.0</item>
     </string-array>
@@ -282,7 +282,7 @@
         <item>8.0</item>
     </string-array>
     <string name="title_arbs_gate">Noise gate</string>
-    <string name="summary_arbs_gate">Fades the output to 0 when the 5 ms input level stays below the threshold for 50 ms.</string>
+    <string name="summary_arbs_gate">Fades the output to 0 when the 5 ms input level stays below the threshold for 50 ms. Weak vibration (for example footsteps) may disappear. Off by default (ASB has no gate).</string>
     <string-array name="arbs_gate_names">
         <item>Off (default)</item>
         <item>1 %FS</item>
@@ -296,7 +296,7 @@
         <item>4</item>
     </string-array>
     <string name="title_arbs_silence_mode">Silence handling</string>
-    <string name="summary_arbs_silence_mode">What to do while the game sends no haptics. Diagnostic options 2-4 may change the faint-noise behavior.</string>
+    <string name="summary_arbs_silence_mode">What to do while the game sends no haptics. Diagnostic options 2-4 may change the faint-noise behavior. Applies when the next stream connects (the apply time is logged).</string>
     <string-array name="arbs_silence_mode_names">
         <item>1: Neutral keepalive every 50 ms (current, default)</item>
         <item>2: Neutral keepalive every 200 ms</item>
@@ -330,6 +330,29 @@
         <item>161</item>
         <item>321</item>
         <item>641</item>
+    </string-array>
+    <string name="title_arbs_restore_defaults">Restore ASB defaults</string>
+    <string name="summary_arbs_restore_defaults">Resets only the ARBS output items below to the ASB-based defaults (strength 127, gain 1.0, ASB curve, 321 taps, gate off, silence mode 1, jitter auto, trigger on/100%). Applies when the next stream connects.</string>
+    <string name="toast_arbs_restore_defaults">ASB defaults restored. They apply when the next stream connects.</string>
+    <string name="title_arbs_trigger">APEX trigger haptics</string>
+    <string name="summary_arbs_trigger">Plays the host adaptive-trigger effects (Feedback, Vibration, Weapon, Bow, pulse train) as APEX trigger vibration, using the same method as ASB. Off = grips only. Applies when the next stream connects.</string>
+    <string name="title_arbs_trigger_strength">APEX trigger strength</string>
+    <string name="summary_arbs_trigger_strength">Linear scale of the trigger output (ASB trigger-strength, default 100%). The ASB limit of 127 is never exceeded.</string>
+    <string-array name="arbs_trigger_strength_names">
+        <item>0 % (off)</item>
+        <item>20 %</item>
+        <item>40 %</item>
+        <item>60 %</item>
+        <item>80 %</item>
+        <item>100 % (default)</item>
+    </string-array>
+    <string-array name="arbs_trigger_strength_values">
+        <item>0</item>
+        <item>20</item>
+        <item>40</item>
+        <item>60</item>
+        <item>80</item>
+        <item>100</item>
     </string-array>
     <string name="title_arbs_jitter_fixed">Jitter buffer fixed delay</string>
     <string name="summary_arbs_jitter_fixed">0 = automatic (adaptive, 16-80 ms). Otherwise a fixed delay in ms.</string>

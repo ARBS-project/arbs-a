@@ -122,6 +122,7 @@ public class ApexController extends Xbox360Controller {
             }
         }
         boolean res = super.handleRead(buffer);
+        ApexHaptics.get().onTriggerPosition(Math.round(leftTrigger * 255f), Math.round(rightTrigger * 255f));   // ARBS A1-4: 효과 렌더 기준 위치(0..255)
         if (inputDiag) {
             diagnose(buffer, n);
         }

@@ -11,8 +11,9 @@ import java.util.Locale;
  *  - 0x57 payload: [0]=0x80(보간)|0x10(우 그립)|0x08(좌 그립)|route(Mute=3) = 0x9B,
  *    서브프레임 8x(트리거,좌그립,우그립), 인코딩 int8+128, 트리거 채널 0x80   Apex6Protocol.cpp:155-175, .h:40-45
  *  - 중립 프레임/정지 순서(중립 x3 -> 비활성 2건)           Apex5Device.cpp:741-767
- * 이 클래스가 만드는 프레임은 GetInfo(0x01), 0x53(그립 활성·비활성 3종), 0x57(그립 전용 0x9B) 뿐이다.
- * 펌웨어 효과, 0x11·0x12, 설정·저장 명령, 트리거 채널 구동은 만들 수 없다.
+ * A1-4 추가(모두 ASB 근거, 메서드 주석 참조): 트리거 활성 `01 02 03 00 40`, 한쪽 활성 `01 t 03 00 40`+`01 o 00`, 0x57 트리거 채널.
+ * 이 클래스가 만드는 프레임은 GetInfo(0x01), 0x53(그립·트리거 활성/비활성), 0x57(그립 + 선택적 트리거 채널) 뿐이다.
+ * 펌웨어 효과(0x53 sub 0x04), 0x11·0x12, 설정·저장 명령은 만들 수 없다.
  */
 public final class ApexProtocol {
     private ApexProtocol() { }
@@ -71,14 +72,47 @@ public final class ApexProtocol {
 
     /** 0x57 그립 전용 프레임: 서브프레임 8개 signed 값(int8 +128), 한 값이라도 +-{@link #MAX_AMPLITUDE}(127) 를 넘으면 예외. */
     public static byte[] gripFrame(int[] left, int[] right) {
+        return realtimeFrame(left, right, null, false, ROUTE_MUTE);
+    }
+
+    // ---- A1-4: 트리거 채널(ASB Apex6Protocol.cpp 에서 확인된 바이트만)
+    public static final int ROUTE_LEFT = 0, ROUTE_RIGHT = 1, ROUTE_BOTH = 2;
+
+    /** 0x53 `01 02 03 00 40` - 트리거 양쪽 활성(ASB buildMotorEnable triggers, Apex6Protocol.cpp:100,103; buildTriggerEnable :126-129). */
+    public static byte[] triggerEnableBoth() {
+        return cmd(CMD_MOTOR_ROUTE, new int[]{0x01, 0x02, 0x03, 0x00, 0x40});
+    }
+
+    /**
+     * 한쪽 트리거만 활성: `01 <target> 03 00 40` 후 반대쪽 `01 <other> 00`(ASB buildTriggerSideEnable, Apex6Protocol.cpp:108-114;
+     * target Left=0 Right=1, Apex6Protocol.cpp:118-122). route 가 LEFT/RIGHT 가 아니면 예외.
+     */
+    public static byte[][] triggerSideEnable(int route) {
+        if (route != ROUTE_LEFT && route != ROUTE_RIGHT) throw new IllegalArgumentException("한쪽 트리거만");
+        int target = route == ROUTE_RIGHT ? 0x01 : 0x00;
+        int other = target == 0x01 ? 0x00 : 0x01;
+        return new byte[][]{
+                cmd(CMD_MOTOR_ROUTE, new int[]{0x01, target, 0x03, 0x00, 0x40}),
+                cmd(CMD_MOTOR_ROUTE, new int[]{0x01, other, 0x00}),
+        };
+    }
+
+    /**
+     * 0x57 프레임(ASB buildRealtimeMotor, Apex6Protocol.cpp:155-175): payload[0] = 0x80(보간)|0x10|0x08(그립)|0x04(트리거 사용)|route.
+     * 트리거 미사용이면 트리거 채널은 0x80 이고 route 는 Mute(3) 여야 한다(= 이전 0x9B 프레임과 동일). 모든 값은 +-127 이하.
+     */
+    public static byte[] realtimeFrame(int[] left, int[] right, int[] trigger, boolean triggerOn, int route) {
         if (left.length != SUBFRAMES || right.length != SUBFRAMES) throw new IllegalArgumentException("서브프레임은 8개");
+        if (triggerOn && (trigger == null || trigger.length != SUBFRAMES)) throw new IllegalArgumentException("트리거 서브프레임은 8개");
+        if (route < 0 || route > ROUTE_MUTE || (!triggerOn && route != ROUTE_MUTE)) throw new IllegalArgumentException("route");
         int[] p = new int[25];
-        p[0] = 0x80 | 0x10 | 0x08 | ROUTE_MUTE;
+        p[0] = 0x80 | 0x10 | 0x08 | (triggerOn ? 0x04 : 0) | route;
         for (int i = 0; i < SUBFRAMES; i++) {
-            if (Math.abs(left[i]) > MAX_AMPLITUDE || Math.abs(right[i]) > MAX_AMPLITUDE) {
+            if (Math.abs(left[i]) > MAX_AMPLITUDE || Math.abs(right[i]) > MAX_AMPLITUDE
+                    || (triggerOn && Math.abs(trigger[i]) > MAX_AMPLITUDE)) {
                 throw new IllegalArgumentException("진폭 상한 초과");
             }
-            p[1 + i * 3] = 0x80;               // 트리거 채널 off
+            p[1 + i * 3] = triggerOn ? trigger[i] + 128 : 0x80;
             p[2 + i * 3] = left[i] + 128;
             p[3 + i * 3] = right[i] + 128;
         }

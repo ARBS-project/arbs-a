@@ -133,8 +133,10 @@ public class PreferenceConfiguration {
     public boolean arbsHapticsTest; // ARBS A1-1
     public boolean arbsApexFirst = true; // ARBS A1-2
     public boolean arbsInputDiag; // ARBS A1-2b
-    public int arbsApexAmp = 40; // ARBS A1-2 (0..60 of 127)
-    public float arbsApexGain = 4.0f; // ARBS A1-3e (1.0..8.0, default 4.0 with the ASB curve)
+    public int arbsApexAmp = 127; // ARBS A1-4 (0..127, default = ASB full scale)
+    public float arbsApexGain = 1.0f; // ARBS A1-4 (1.0..8.0, default 1.0 = ASB gain 100%)
+    public boolean arbsTriggerHaptics = true; // ARBS A1-4 APEX trigger haptics
+    public int arbsTriggerStrength = 100; // ARBS A1-4 trigger strength % (ASB --trigger-strength, default 100)
     public float arbsGatePct = 0.0f; // ARBS A1-3e noise gate threshold %FS (0 = off, default)
     public int arbsSilenceMode = 1; // ARBS A1-3e silence handling 1..4
     public boolean arbsAsbCurve = true; // ARBS A1-3e amplification curve (ASB / tanh)
@@ -591,14 +593,20 @@ public class PreferenceConfiguration {
         config.arbsInputDiag = prefs.getBoolean("checkbox_arbs_input_diag", false);
         config.arbsApexFirst = prefs.getBoolean("checkbox_arbs_apex_first", true);
         try {
-            config.arbsApexAmp = Math.max(0, Math.min(127, Integer.parseInt(prefs.getString("list_arbs_apex_amp", "40"))));
+            config.arbsApexAmp = Math.max(0, Math.min(127, Integer.parseInt(prefs.getString("list_arbs_apex_amp", "127"))));
         } catch (NumberFormatException e) {
-            config.arbsApexAmp = 40;
+            config.arbsApexAmp = 127;
         }
         try {
-            config.arbsApexGain = Math.max(1.0f, Math.min(8.0f, Float.parseFloat(prefs.getString("list_arbs_apex_gain", "4.0"))));
+            config.arbsApexGain = Math.max(1.0f, Math.min(8.0f, Float.parseFloat(prefs.getString("list_arbs_apex_gain", "1.0"))));
         } catch (NumberFormatException e) {
-            config.arbsApexGain = 4.0f;
+            config.arbsApexGain = 1.0f;
+        }
+        config.arbsTriggerHaptics = prefs.getBoolean("checkbox_arbs_trigger", true);
+        try {
+            config.arbsTriggerStrength = Math.max(0, Math.min(100, Integer.parseInt(prefs.getString("list_arbs_trigger_strength", "100"))));
+        } catch (NumberFormatException e) {
+            config.arbsTriggerStrength = 100;
         }
         try {
             config.arbsGatePct = Math.max(0f, Math.min(4f, Float.parseFloat(prefs.getString("list_arbs_gate", "0"))));

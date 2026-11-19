@@ -46,6 +46,15 @@ public final class ApexHaptics {
     /** ARBS A1-3: 일반 진동 -> 그립 사인(PCM 비무음 채널이 우선). */
     public final ApexRumbleSynth rumble = new ApexRumbleSynth();
     private final ApexScheduler sched = new ApexScheduler();
+    /** ARBS A1-4: 트리거 효과 -> 트리거 채널(ASB Mix 경로 이식). */
+    public final ApexTriggerBridge trig = new ApexTriggerBridge();
+    private final ApexTriggerBridge.Out trigOut = new ApexTriggerBridge.Out();
+    private volatile boolean triggerOn;
+    private int trigTarget = ApexProtocol.ROUTE_BOTH, trigRelease;
+    private static final int TRIGGER_RELEASE_FRAMES = 4;   // ASB kTriggerReleaseFrames (Apex6HapticBridge.cpp:21,1226-1232)
+    private long trigRetargets, trigFramesWin;
+    private final long[] trigPrev = new long[17];
+    private int trigEffectLogged;
 
     private volatile State state = State.NONE;
     private volatile boolean sessionRunning, paused, userStopped, terminate, active;
@@ -190,7 +199,12 @@ public final class ApexHaptics {
     public static final long SUSPEND_AFTER_MS = 2000;
     private volatile int silenceMode = SILENCE_KEEPALIVE_50;
 
-    public void onSessionStart(int cap, float gain, int jitterFixedMs, float gatePct, int silence, boolean asbCurve, int taps) {
+    public void onSessionStart(int cap, float gain, int jitterFixedMs, float gatePct, int silence, boolean asbCurve, int taps,
+                               boolean triggerHaptics, int triggerStrength) {
+        triggerOn = triggerHaptics && triggerStrength > 0;
+        trig.setStrengthPercent(triggerStrength);
+        trig.setCeilingPercent(100);   // ASB 기본 --apex6-trigger-ceiling 100 (BridgeOptions.h:57)
+        trigEffectLogged = 0;
         pipe.setCap(cap);
         pipe.setGain(gain);
         pipe.setGateThreshold(gatePct);
@@ -208,6 +222,30 @@ public final class ApexHaptics {
                 (pipe.getTaps() - 1) / 2.0 / ApexPcmPipeline.SAMPLE_RATE * 1000.0,
                 gatePct > 0 ? String.format(Locale.US, "%.0f%%FS", gatePct) : "끔", silenceMode, keepaliveInterval,
                 jitterFixedMs > 0 ? ("고정 " + jitterFixedMs + "ms") : "자동(p95+4ms)"));
+        ArbsLog.i("APEX 설정 적용(세션 시작 시점): 트리거 햅틱=" + (triggerOn ? "켬 세기 " + triggerStrength + "%(상한 127, ASB 기준)" : "끔"));
+    }
+
+    /** IF0 입력 리포트마다(ApexController): 트리거 아날로그 0..255 - 효과 렌더 기준 위치. */
+    public void onTriggerPosition(int left, int right) {
+        if (triggerOn) trig.setPosition(left, right);
+    }
+
+    /** setAdaptiveTriggers 콜백(제어 수신 스레드). eventFlags 0x08=좌, 0x04=우(Limelight.h DS_EFFECT_*). 블로킹 없음. */
+    public void onTriggerEffects(short controller, byte eventFlags, byte typeLeft, byte typeRight, byte[] left, byte[] right) {
+        if (!triggerOn || !sessionRunning) return;
+        int num = apexNumber;
+        if (num >= 0 && (controller & 0xFFFF) != num) return;
+        long now = System.nanoTime();
+        if ((eventFlags & 0x08) != 0) logTriggerEvent(trig.onEffect(true, typeLeft, left, now));
+        if ((eventFlags & 0x04) != 0) logTriggerEvent(trig.onEffect(false, typeRight, right, now));
+    }
+
+    private void logTriggerEvent(String s) {
+        if (s == null) return;
+        if (trigEffectLogged < 300) {
+            trigEffectLogged++;
+            ArbsLog.i("APEX " + s);
+        }
     }
 
     public void onSessionEnd(String reason) {
@@ -344,8 +382,14 @@ public final class ApexHaptics {
                 }
                 if (suspended) {
                     // 모드 3: 그립 비활성 중. PCM 은 계속 받되 최신 16샘플만 유지(재개 직전 샘플 보존), 신호 재개/rumble 이면 재활성.
-                    if (pipe.getSilentMs() < 50 || rumble.isActive()) {
+                    if (pipe.getSilentMs() < 50 || rumble.isActive() || (triggerOn && trig.anyEffect())) {
                         ArbsLog.i("APEX 무음 해제: 신호 재개 -> 그립 재활성(0x53 활성 + " + ApexProtocol.ENABLE_WAIT_MS + "ms 대기, 직전 샘플 보존)");
+                        if (triggerOn && !sendFrame(ApexProtocol.triggerEnableBoth(), "0x53 트리거 재활성")) {
+                            ArbsLog.i("APEX 트리거 재활성 전송 실패 -> 엔진 중단");
+                            break;
+                        }
+                        trigTarget = ApexProtocol.ROUTE_BOTH;
+                        trigRelease = 0;
                         if (!sendFrame(ApexProtocol.gripRealtimeEnable(), "0x53 재활성")) {
                             ArbsLog.i("APEX 재활성 전송 실패 -> 엔진 중단");
                             break;
@@ -410,7 +454,7 @@ public final class ApexHaptics {
                 if (n < 8) {
                     for (int i = n; i < 8; i++) { l[i] = 0; r[i] = 0; }
                 }
-                if (catchingUp && n == 0 && !rumble.isActive()) {
+                if (catchingUp && n == 0 && !rumble.isActive() && !(triggerOn && trig.anyEffect())) {
                     // 따라잡는 중인데 보낼 샘플이 없음: 이 슬롯은 건너뜀(무음 구간 보충 프레임 불필요)
                     continue;
                 }
@@ -418,9 +462,35 @@ public final class ApexHaptics {
                 if (rumble.mix(l, r, 8, pipe.getCap()) > 0) rumbleFrames++;
                 boolean allZero = true;
                 for (int i = 0; i < 8; i++) if (l[i] != 0 || r[i] != 0) { allZero = false; break; }
+                // ARBS A1-4: 트리거 채널(ASB renderBlock/run 의 트리거 부분과 같은 순서)
+                boolean trigEnabled = false;
+                int trigRoute = ApexProtocol.ROUTE_MUTE;
+                if (triggerOn) {
+                    trig.render(now, trigOut);
+                    if (trigOut.timeoutNote != null) ArbsLog.i("APEX " + trigOut.timeoutNote);
+                    trigEnabled = trigOut.enabled;
+                    trigRoute = trigOut.route;
+                    if (trigEnabled && trigRoute != trigTarget) {
+                        if (!sendTriggerRoute(trigRoute)) {
+                            ArbsLog.i("APEX 트리거 route 전환 전송 실패 -> 정지 시퀀스 후 엔진 중단");
+                            break;
+                        }
+                        trigTarget = trigRoute;
+                        trigRetargets++;
+                    }
+                    if (trigEnabled) {
+                        trigRelease = TRIGGER_RELEASE_FRAMES;
+                        trigFramesWin++;
+                    } else if (trigRelease > 0) {
+                        trigRelease--;
+                        trigEnabled = true;       // 해제 지연 4프레임: 영(0) 샘플을 Both 로 보내 잔류를 막음
+                        trigRoute = ApexProtocol.ROUTE_BOTH;
+                    }
+                    if (trigEnabled) allZero = false;
+                }
                 if (allZero) zeroRun++; else zeroRun = 0;
 
-                if (silenceMode == SILENCE_SUSPEND && allZero && zeroRun > IDLE_ENTER_FRAMES && !rumble.isActive()
+                if (silenceMode == SILENCE_SUSPEND && allZero && zeroRun > IDLE_ENTER_FRAMES && !rumble.isActive() && !(triggerOn && trig.anyEffect())
                         && pipe.getSilentMs() >= SUSPEND_AFTER_MS) {
                     ArbsLog.i("APEX 긴 무음(" + SUSPEND_AFTER_MS + "ms) -> 그립 비활성(정지 시퀀스, 세션·PCM 수신은 유지)");
                     sendStopSequence();
@@ -432,7 +502,7 @@ public final class ApexHaptics {
                         || (silenceMode != SILENCE_STOP_SENDING && (now - lastSendNs) >= keepaliveInterval * 1_000_000L);
                 if (!send) silenceSkipped++;
                 if (send) {
-                    byte[] f = ApexProtocol.gripFrame(l, r);
+                    byte[] f = trigEnabled ? ApexProtocol.realtimeFrame(l, r, trigOut.samples, true, trigRoute) : ApexProtocol.gripFrame(l, r);
                     long x0 = System.nanoTime();
                     boolean ok = sendFrame(f, "0x57");
                     long xd = System.nanoTime() - x0;
@@ -535,6 +605,25 @@ public final class ApexHaptics {
         qDepthN = 0;
         silenceSkipped = 0;
         resetWindow();
+        logTriggerStats(sec);
+    }
+
+    /** A1-4: 1초 요약 "APEX 트리거:" - 수신 효과 종류/수, 송신 트리거 프레임 수/초, 해제·타임아웃. 변화가 없으면 생략. */
+    private void logTriggerStats(double sec) {
+        if (!triggerOn) return;
+        long[] c = trig.stats();
+        long frames = trigFramesWin;
+        trigFramesWin = 0;
+        boolean changed = frames > 0;
+        for (int i = 0; i < c.length; i++) if (c[i] != trigPrev[i]) changed = true;
+        if (!changed) return;
+        ArbsLog.i(String.format(Locale.US,
+                "APEX 트리거: 수신 L=%d R=%d(적용 %d, 해제 %d, 중복 %d, 미지원 %d, 형식오류 %d) 마지막 type L=0x%02X R=0x%02X | 송신 트리거 프레임 %.0f/초(누계 L %d R %d Both %d Mix %d, route 전환 %d) | "
+                        + "무기/활 break %d 상한제한 샘플 %d 3초 무갱신 해제 %d | 세기 %d%%",
+                c[0] - trigPrev[0], c[1] - trigPrev[1], c[2] - trigPrev[2], c[3] - trigPrev[3], c[6] - trigPrev[6], c[4] - trigPrev[4], c[5] - trigPrev[5],
+                c[15], c[16], frames / sec, c[11], c[12], c[13], c[14], trigRetargets, c[8] + c[9] - trigPrev[8] - trigPrev[9], c[10] - trigPrev[10],
+                c[7] - trigPrev[7], trig.getStrengthPercent()));
+        System.arraycopy(c, 0, trigPrev, 0, Math.min(c.length, trigPrev.length));
     }
 
     private static double avgMs(long sumNs, long n) { return n == 0 ? 0 : sumNs / 1e6 / n; }
@@ -656,6 +745,17 @@ public final class ApexHaptics {
         sched.getAndResetResyncs();
         sched.getAndResetCatchups();
         quietTicks = 0;
+        trigTarget = ApexProtocol.ROUTE_BOTH;
+        trigRelease = 0;
+        trigFramesWin = 0;
+        if (triggerOn) {
+            ArbsLog.i("APEX 트리거 채널 활성: 0x53 `01 02 03 00 40` 1건(ASB buildMotorEnable 순서: 트리거 -> 그립)");
+            if (!sendFrame(ApexProtocol.triggerEnableBoth(), "0x53 트리거 활성")) {
+                ArbsLog.i("APEX 트리거 활성 명령 전송 실패 -> 정지 시퀀스");
+                sendStopSequence();
+                return false;
+            }
+        }
         ArbsLog.i("APEX 활성화: 0x53 그립 실시간 활성 1건 송신 후 94ms 대기");
         if (!sendFrame(ApexProtocol.gripRealtimeEnable(), "0x53 활성")) {
             ArbsLog.i("APEX 활성 명령 전송 실패 -> 정지 시퀀스");
@@ -671,6 +771,8 @@ public final class ApexHaptics {
         ArbsLog.i("APEX 정지 시퀀스 시작: " + reason);
         suspended = false;
         rumble.clear();   // 정지 후 재개 때 오래된 진동이 되살아나지 않게
+        trig.clear();     // A1-4: 트리거 효과·중재 상태도 함께 초기화(정지 시퀀스의 `01 02 00` 이 트리거 채널을 비활성)
+        trigRelease = 0;
         int ok = sendStopSequence();
         active = false;
         ArbsLog.i("APEX 정지 완료: 전송 성공 " + ok + "/5, PCM 비활성 중 수신 " + winInactive + "패킷");
@@ -687,6 +789,13 @@ public final class ApexHaptics {
         }
         for (byte[] f : ApexProtocol.disablePair()) if (sendFrame(f, "정지 0x53")) ok++;
         return ok;
+    }
+
+    /** ASB setApex6TriggerSide(Apex5Device.cpp:690-700): Both = `01 02 03 00 40`, 한쪽 = 활성 + 반대쪽 비활성. */
+    private boolean sendTriggerRoute(int route) {
+        if (route == ApexProtocol.ROUTE_BOTH) return sendFrame(ApexProtocol.triggerEnableBoth(), "0x53 트리거 Both");
+        for (byte[] f : ApexProtocol.triggerSideEnable(route)) if (!sendFrame(f, "0x53 트리거 한쪽")) return false;
+        return true;
     }
 
     private boolean sendFrame(byte[] f, String label) {

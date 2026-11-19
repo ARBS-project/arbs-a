@@ -294,6 +294,9 @@ public class MoonBridge {
 
     public static void bridgeClSetAdaptiveTriggers(short controllerNumber, byte eventFlags, byte typeLeft, byte typeRight, byte[] left, byte[] right) {
         com.limelight.arbs.ArbsFeedbackLog.onAdaptiveTriggers(controllerNumber, eventFlags, typeLeft, typeRight, left, right);
+        try {
+            com.limelight.arbs.ApexHaptics.get().onTriggerEffects(controllerNumber, eventFlags, typeLeft, typeRight, left, right);   // ARBS A1-4
+        } catch (Throwable ignored) { }
     }
 
     public static void bridgeClConnectionStarted() {

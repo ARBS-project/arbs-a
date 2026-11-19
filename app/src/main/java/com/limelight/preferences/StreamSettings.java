@@ -300,6 +300,27 @@ public class StreamSettings extends Activity {
                 }
             });
             arbsRefreshApexStatus();
+            // ARBS A1-4: [ASB 기본값으로 복원] - ARBS 출력 항목만 ASB 기준 기본값으로(APEX first/테스트/입력 진단은 그대로)
+            Preference restore = findPreference("arbs_restore_defaults");
+            if (restore != null) {
+                restore.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
+                    @Override
+                    public boolean onPreferenceClick(Preference preference) {
+                        String[][] lists = {{"list_arbs_apex_amp", "127"}, {"list_arbs_apex_gain", "1.0"}, {"list_arbs_curve", "asb"},
+                                {"list_arbs_filter", "321"}, {"list_arbs_gate", "0"}, {"list_arbs_silence_mode", "1"},
+                                {"list_arbs_jitter_fixed", "0"}, {"list_arbs_trigger_strength", "100"}};
+                        for (String[] kv : lists) {
+                            Preference p = findPreference(kv[0]);
+                            if (p instanceof android.preference.ListPreference) ((android.preference.ListPreference) p).setValue(kv[1]);
+                        }
+                        Preference t = findPreference("checkbox_arbs_trigger");
+                        if (t instanceof android.preference.CheckBoxPreference) ((android.preference.CheckBoxPreference) t).setChecked(true);
+                        com.limelight.arbs.ArbsLog.i("설정: ASB 기본값으로 복원(상한 127, 이득 1.0, ASB 곡선, 필터 321, 게이트 끔, 무음 모드1, 지터 자동, 트리거 켬/100%). 다음 스트림 연결 때 적용");
+                        android.widget.Toast.makeText(getActivity(), R.string.toast_arbs_restore_defaults, android.widget.Toast.LENGTH_LONG).show();
+                        return true;
+                    }
+                });
+            }
             PreferenceScreen screen = getPreferenceScreen();
 
             // hide on-screen controls category on non touch screen devices
