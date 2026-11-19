@@ -288,6 +288,13 @@ public class StreamSettings extends Activity {
         public void onCreate(Bundle savedInstanceState) {
             super.onCreate(savedInstanceState);
 
+            // ARBS A1-4b: 설정 화면을 그리기 전에 한 번 더 저장값 검증(앱 시작 때 이미 했지만 안전망)
+            try {
+                for (String c : com.limelight.arbs.ArbsSettings.migrate(PreferenceManager.getDefaultSharedPreferences(getActivity()))) {
+                    com.limelight.arbs.ArbsLog.get(getActivity()).line(c);
+                }
+            } catch (RuntimeException ignored) {
+            }
             addPreferencesFromResource(R.xml.preferences);
 
             // ARBS A1-1: log screen entry

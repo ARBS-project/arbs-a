@@ -1,5 +1,6 @@
 package com.limelight.preferences;
 
+import com.limelight.arbs.ArbsSettings;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -589,48 +590,19 @@ public class PreferenceConfiguration {
         config.playHostAudio = prefs.getBoolean(HOST_AUDIO_PREF_STRING, DEFAULT_HOST_AUDIO);
         config.smallIconMode = prefs.getBoolean(SMALL_ICONS_PREF_STRING, getDefaultSmallMode(context));
         config.multiController = prefs.getBoolean(MULTI_CONTROLLER_PREF_STRING, DEFAULT_MULTI_CONTROLLER);
-        config.arbsHapticsTest = prefs.getBoolean("checkbox_arbs_haptics_test", false);
-        config.arbsInputDiag = prefs.getBoolean("checkbox_arbs_input_diag", false);
-        config.arbsApexFirst = prefs.getBoolean("checkbox_arbs_apex_first", true);
-        try {
-            config.arbsApexAmp = Math.max(0, Math.min(127, Integer.parseInt(prefs.getString("list_arbs_apex_amp", "127"))));
-        } catch (NumberFormatException e) {
-            config.arbsApexAmp = 127;
-        }
-        try {
-            config.arbsApexGain = Math.max(1.0f, Math.min(8.0f, Float.parseFloat(prefs.getString("list_arbs_apex_gain", "1.0"))));
-        } catch (NumberFormatException e) {
-            config.arbsApexGain = 1.0f;
-        }
-        config.arbsTriggerHaptics = prefs.getBoolean("checkbox_arbs_trigger", true);
-        try {
-            config.arbsTriggerStrength = Math.max(0, Math.min(100, Integer.parseInt(prefs.getString("list_arbs_trigger_strength", "100"))));
-        } catch (NumberFormatException e) {
-            config.arbsTriggerStrength = 100;
-        }
-        try {
-            config.arbsGatePct = Math.max(0f, Math.min(4f, Float.parseFloat(prefs.getString("list_arbs_gate", "0"))));
-        } catch (NumberFormatException e) {
-            config.arbsGatePct = 0.0f;
-        }
-        try {
-            config.arbsSilenceMode = Math.max(1, Math.min(4, Integer.parseInt(prefs.getString("list_arbs_silence_mode", "1"))));
-        } catch (NumberFormatException e) {
-            config.arbsSilenceMode = 1;
-        }
-        config.arbsAsbCurve = !"tanh".equals(prefs.getString("list_arbs_curve", "asb"));
-        try {
-            int ft = Integer.parseInt(prefs.getString("list_arbs_filter", "321"));
-            config.arbsFilterTaps = (ft == 161 || ft == 641) ? ft : 321;
-        } catch (NumberFormatException e) {
-            config.arbsFilterTaps = 321;
-        }
-        try {
-            int jf = Integer.parseInt(prefs.getString("list_arbs_jitter_fixed", "0"));
-            config.arbsJitterFixed = jf <= 0 ? 0 : Math.max(16, Math.min(80, jf));
-        } catch (NumberFormatException e) {
-            config.arbsJitterFixed = 0;
-        }
+        // ARBS A1-4b: 모든 ARBS 설정은 안전 읽기(자료형·허용 목록이 틀리면 ASB 기본값)
+        config.arbsHapticsTest = ArbsSettings.getBool(prefs, "checkbox_arbs_haptics_test");
+        config.arbsInputDiag = ArbsSettings.getBool(prefs, "checkbox_arbs_input_diag");
+        config.arbsApexFirst = ArbsSettings.getBool(prefs, "checkbox_arbs_apex_first");
+        config.arbsApexAmp = ArbsSettings.getInt(prefs, "list_arbs_apex_amp");
+        config.arbsApexGain = ArbsSettings.getFloat(prefs, "list_arbs_apex_gain");
+        config.arbsTriggerHaptics = ArbsSettings.getBool(prefs, "checkbox_arbs_trigger");
+        config.arbsTriggerStrength = ArbsSettings.getInt(prefs, "list_arbs_trigger_strength");
+        config.arbsGatePct = ArbsSettings.getFloat(prefs, "list_arbs_gate");
+        config.arbsSilenceMode = ArbsSettings.getInt(prefs, "list_arbs_silence_mode");
+        config.arbsAsbCurve = !"tanh".equals(ArbsSettings.getList(prefs, "list_arbs_curve"));
+        config.arbsFilterTaps = ArbsSettings.getInt(prefs, "list_arbs_filter");
+        config.arbsJitterFixed = ArbsSettings.getInt(prefs, "list_arbs_jitter_fixed");
         config.usbDriver = prefs.getBoolean(USB_DRIVER_PREF_SRING, DEFAULT_USB_DRIVER);
         config.onscreenController = prefs.getBoolean(ONSCREEN_CONTROLLER_PREF_STRING, ONSCREEN_CONTROLLER_DEFAULT);
         config.onlyL3R3 = prefs.getBoolean(ONLY_L3_R3_PREF_STRING, ONLY_L3_R3_DEFAULT);

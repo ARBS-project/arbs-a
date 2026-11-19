@@ -264,7 +264,7 @@
         <item>127</item>
     </string-array>
     <string name="title_arbs_apex_gain">APEX haptics gain</string>
-    <string name="summary_arbs_apex_gain">Gain before the soft limiter (the strength limit above is never exceeded). Default 1.0 (ASB gain 100%). Applies when the next stream connects.</string>
+    <string name="summary_arbs_apex_gain">Gain before the soft limiter (the strength limit above is never exceeded). Default 1.0 (same as ASB gain 100 percent). Applies when the next stream connects.</string>
     <string-array name="arbs_apex_gain_names">
         <item>1.0 (default)</item>
         <item>2.0</item>
@@ -337,7 +337,7 @@
     <string name="title_arbs_trigger">APEX trigger haptics</string>
     <string name="summary_arbs_trigger">Plays the host adaptive-trigger effects (Feedback, Vibration, Weapon, Bow, pulse train) as APEX trigger vibration, using the same method as ASB. Off = grips only. Applies when the next stream connects.</string>
     <string name="title_arbs_trigger_strength">APEX trigger strength</string>
-    <string name="summary_arbs_trigger_strength">Linear scale of the trigger output (ASB trigger-strength, default 100%). The ASB limit of 127 is never exceeded.</string>
+    <string name="summary_arbs_trigger_strength">Linear scale of the trigger output (ASB trigger-strength, default 100 percent). The ASB limit of 127 is never exceeded.</string>
     <string-array name="arbs_trigger_strength_names">
         <item>0 % (off)</item>
         <item>20 %</item>
