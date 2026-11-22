@@ -1,35 +1,51 @@
-# Moonlight Android
+# ARBS-A — Android client (APEX Remote Bridge STACKON)
 
-[![AppVeyor Build Status](https://ci.appveyor.com/api/projects/status/232a8tadrrn8jv0k/branch/master?svg=true)](https://ci.appveyor.com/project/cgutman/moonlight-android/branch/master)
-[![Translation Status](https://hosted.weblate.org/widgets/moonlight/-/moonlight-android/svg-badge.svg)](https://hosted.weblate.org/projects/moonlight/moonlight-android/)
+> **Unofficial open-source project.** ARBS is not affiliated with, endorsed by, or sponsored by Flydigi.
+> It is also not affiliated with the Moonlight, Sunshine, Apollo or Vibepollo projects.
+> All product names and trademarks belong to their respective owners. This repository contains no Flydigi logos or images.
 
-[Moonlight for Android](https://moonlight-stream.org) is an open source client for NVIDIA GameStream and [Sunshine](https://github.com/LizardByte/Sunshine).
+## What is this?
 
-Moonlight for Android will allow you to stream your full collection of games from your Windows PC to your Android device,
-whether in your own home or over the internet.
+ARBS-A ("ARBS Moonlight") is a fork of [Moonlight for Android](https://github.com/moonlight-stream/moonlight-android)
+that lets a **Flydigi APEX 6 Pro** controller connected to the Android device (USB) feel the host game's DualSense output
+(standard rumble, adaptive-trigger effects and PCM HD haptics) while streaming from an ARBS-H host.
 
-Moonlight also has a [PC client](https://github.com/moonlight-stream/moonlight-qt) and [iOS/tvOS client](https://github.com/moonlight-stream/moonlight-ios).
+ARBS consists of four repositories in the `arbs-project` organisation:
 
-You can follow development on our [Discord server](https://moonlight-stream.org/discord) and help translate Moonlight into your language on [Weblate](https://hosted.weblate.org/projects/moonlight/moonlight-android/).
+| Repository | Role |
+|---|---|
+| `arbs` | Project overview, user guide, download notes, license notices, ARBS Core sources |
+| `arbs-h` | Host (fork of Vibepollo 2.18.9) |
+| `arbs-w` | Windows client (fork of moonlight-qt) |
+| `arbs-a` | Android client (this repository, fork of moonlight-android) |
 
-## Downloads
-* [Google Play Store](https://play.google.com/store/apps/details?id=com.limelight)
-* [Amazon App Store](https://www.amazon.com/gp/product/B00JK4MFN2)
-* [F-Droid](https://f-droid.org/packages/com.limelight)
-* [APK](https://github.com/moonlight-stream/moonlight-android/releases)
+## Based on
 
-## Building
-* Install Android Studio and the Android NDK
-* Run ‘git submodule update --init --recursive’ from within moonlight-android/
-* In moonlight-android/, create a file called ‘local.properties’. Add an ‘ndk.dir=’ property to the local.properties file and set it equal to your NDK directory.
-* Build the APK using Android Studio or gradle
+- `moonlight-stream/moonlight-android` commit `b48494cb` plus `Nonary/moonlight-common-c` commit `6f05ee89` vendored into
+  `app/src/main/jni/moonlight-core/moonlight-common-c/` (no submodules).
+- This repository starts from a single **baseline commit** made from those two sources, so it does **not** contain the
+  upstream git history. Details: [NOTICE-ARBS.md](NOTICE-ARBS.md).
+- Application ID `dev.arbs.moonlight` (installs next to the official Moonlight app). Java package names (`com.limelight`) are unchanged.
+- The original README is kept as [README.upstream.md](README.upstream.md).
 
-## Authors
+## Changes from upstream (summary)
 
-* [Cameron Gutman](https://github.com/cgutman)  
-* [Diego Waxemberg](https://github.com/dwaxemberg)  
-* [Aaron Neyer](https://github.com/Aaronneyer)  
-* [Andrew Hennessy](https://github.com/yetanothername)
+- APEX USB driver and haptics engine (`com.limelight.arbs.*`, `ApexController`): PCM haptics to the grips, rumble, trigger effects.
+- ARBS settings screen, ARBS log viewer, crash reporter (logs mask addresses and tokens).
+- Unit tests (JUnit, test scope only).
 
-Moonlight is the work of students at [Case Western](http://case.edu) and was
-started as a project at [MHacks](http://mhacks.org).
+Status: **experimental**. What has actually been confirmed on real devices is listed in the `arbs` repository README.
+
+## License
+
+GPL-3.0 — see [LICENSE.txt](LICENSE.txt). Upstream and third-party notices: [NOTICE-ARBS.md](NOTICE-ARBS.md).
+Security issues: please use the private reporting described in the `arbs` repository `SECURITY.md`.
+
+---
+
+## 한국어 요약
+
+ARBS-A(ARBS Moonlight)는 moonlight-android(`b48494cb`)와 Nonary moonlight-common-c(`6f05ee89`)를 합친 baseline에서 시작한 Android 클라이언트
+포크입니다(원본 git 이력 없음). Android 기기에 USB로 연결한 Flydigi APEX 6 Pro에서 호스트 게임의 DualSense 출력(일반 진동·트리거 효과·
+PCM HD 햅틱)을 느끼게 합니다. 앱 ID `dev.arbs.moonlight`. 라이선스 GPL-3.0. 상태: 실험적.
+**Flydigi와 관련 없는 비공식 오픈소스 프로젝트**이며 Moonlight·Sunshine·Apollo·Vibepollo 프로젝트와도 관련이 없습니다.

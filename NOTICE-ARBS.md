@@ -17,7 +17,8 @@
 - 변경 내역 전체는 이 폴더의 로컬 git 이력(`git log`, 기준 커밋 = 위 출처 두 개를 합친 baseline)으로 확인할 수 있다.
 
 ## 배포 시 의무 요약
-GPL-3.0: 동일 라이선스로 대응 소스 제공, 저작권·라이선스 고지 유지, 수정 표시, 추가 제한 금지. 현재는 개인 시험용이며 배포하지 않는다.
+GPL-3.0: 동일 라이선스로 대응 소스 제공, 저작권·라이선스 고지 유지, 수정 표시, 추가 제한 금지. 이 저장소는 ARBS 프로젝트의 공개 소스(GPL-3.0)이며, 바이너리를 배포할 때는 이 저장소가 대응 소스다.
+ARBS는 Flydigi와 관련 없는 비공식 오픈소스 프로젝트다(Moonlight·Sunshine·Apollo·Vibepollo 프로젝트와도 무관).
 
 ## A1-2 modifications (ARBS)
 
@@ -27,3 +28,9 @@ GPL-3.0: 동일 라이선스로 대응 소스 제공, 저작권·라이선스 �
 - Changed: `AbstractXboxController` (overridable `claimInterfaces()`), `UsbDriverService` (claims the APEX), `ControllerHandler` (APEX-first numbering, built-in pad not reported when APEX is present),
   `Game` ([APEX stop] button, session/pause hooks), `MoonBridge` + `callbacks.c` (`bridgeClControllerHaptics` now also passes the PCM as `short[]`), preferences/strings, unit tests (JUnit 4.13.2, test scope only).
 - ApexSenseBridge license note: its LICENSE file says GPL-3.0-or-later while its README says MIT; only protocol facts (byte layouts) are used here, no ASB source code is copied.
+  (ApexSenseBridge: https://github.com/ReynArts/ApexSenseBridge — LICENSE text re-checked on GitHub 2026-11-22: GPL-3.0-or-later; README badge: MIT.)
+
+## Later modifications (A1-3 and after)
+
+Changes after A1-2 (A1-3 … A1-5, B5 and later) are recorded only in this repository's git history: `git log` (and `git log --stat`).
+Files added for publication (R0): `README.md` (new), `README.upstream.md` (original README), `.gitignore` (broken `.cxx/` line fixed, ARBS block).
