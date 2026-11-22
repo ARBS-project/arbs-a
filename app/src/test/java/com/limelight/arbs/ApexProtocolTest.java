@@ -153,4 +153,29 @@ public class ApexProtocolTest {
         assertNull(ApexProtocol.parse(new byte[]{1, 2, 3}, 3));
         assertArrayEquals(new byte[]{0x5A}, new byte[]{(byte) ApexProtocol.MAGIC0});
     }
+
+    /** B5 D-B5-1 (T5): features 0x10 = 트리거 햅틱. 0x9F·0x90·0x10 참, 0x80 거짓(그립만). */
+    @Test
+    public void hasTriggerHapticsFeatureBit() {
+        int[] yes = {0x9F, 0x90, 0x10};
+        for (int v : yes) assertTrue("features " + v, infoWithFeatures(v).hasTriggerHaptics());
+        ApexProtocol.Info gripOnly = infoWithFeatures(0x80);
+        assertFalse(gripOnly.hasTriggerHaptics());
+        assertTrue(gripOnly.hasGripHaptics());
+        assertTrue(infoWithFeatures(0x9F).hasGripHaptics());
+    }
+
+    private static ApexProtocol.Info infoWithFeatures(int features) {
+        byte[] f = new byte[32];
+        f[0] = 0x5A;
+        f[1] = (byte) 0xA5;
+        f[2] = 0x01;
+        f[5] = (byte) 0x96;
+        f[29] = (byte) features;
+        f[31] = (byte) ApexProtocol.checksum(f);
+        ApexProtocol.Info info = ApexProtocol.parse(f, 32);
+        assertNotNull(info);
+        assertEquals(features, info.features);
+        return info;
+    }
 }

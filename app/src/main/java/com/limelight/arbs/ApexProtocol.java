@@ -144,6 +144,8 @@ public final class ApexProtocol {
 
         public boolean isPro() { return deviceType == 0x96 || deviceType == 0x98; }
         public boolean hasGripHaptics() { return (features & 0x80) != 0; }
+        /** B5 D-B5-1: 트리거 햅틱(0x10). ASB Apex5Identity.h:57-60, Core protocol.h 와 같은 이름. */
+        public boolean hasTriggerHaptics() { return (features & 0x10) != 0; }
 
         public String describe() {
             return String.format(Locale.US, "DeviceType=0x%02X Pro=%s connectionMode=0x%02X 배터리=%d features=0x%02X 그립햅틱(0x80)=%s 체크섬=%s",
