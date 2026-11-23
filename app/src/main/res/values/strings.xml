@@ -232,6 +232,16 @@
     <string name="category_host_settings">Host Settings</string>
     <string name="category_arbs">ARBS (A1-4)</string>
     <string name="title_arbs_about">About ARBS-A</string>
+    <string name="title_arbs_check_updates">Check for updates</string>
+    <string name="summary_arbs_check_updates">Off by default. When on, ARBS-A asks GitHub for the latest stable ARBS-A release at app start and offers to open its Releases page. Nothing is downloaded or installed.</string>
+    <string name="arbs_update_available_title">ARBS-A update available</string>
+    <string name="arbs_update_available_message">Version %1$s is available (installed: %2$s). Open the Releases page in your browser?</string>
+    <string name="arbs_update_open">Open Releases</string>
+    <string name="arbs_update_later">Later</string>
+    <string name="toast_arbs_update_latest">ARBS-A is up to date.</string>
+    <string name="toast_arbs_update_no_release">No ARBS-A release has been published yet.</string>
+    <string name="toast_arbs_update_failed">Could not check for updates. Check the network and try again.</string>
+    <string name="toast_arbs_update_no_browser">No browser found. Open %1$s</string>
     <string name="title_arbs_haptics_test">Report PS controller with HD haptics (test)</string>
     <string name="summary_arbs_haptics_test">Test only: tells the host this controller is a PlayStation pad with PCM haptics so the host sends haptics. They are only logged, never output. Off = normal behavior.</string>
     <string name="title_arbs_apex_first">APEX first (A1-2)</string>

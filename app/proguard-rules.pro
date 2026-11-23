@@ -4,6 +4,11 @@
 # Our code
 -keep class com.limelight.binding.input.evdev.* {*;}
 
+# ARBS-A R2a: keep every ARBS class and member. MoonBridge callbacks reach them from native code,
+# and crash reports stay readable. The size cost is small.
+-keep class com.limelight.arbs.** {*;}
+-keep class com.limelight.binding.input.driver.ApexController* {*;}
+
 # Moonlight common
 -keep class com.limelight.nvstream.jni.* {*;}
 

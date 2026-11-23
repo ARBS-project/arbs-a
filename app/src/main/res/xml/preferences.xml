@@ -199,6 +199,11 @@
             android:title="@string/title_arbs_about"
             android:summary="@string/summary_arbs_about"
             android:selectable="false" />
+        <CheckBoxPreference
+            android:key="checkbox_arbs_check_updates"
+            android:title="@string/title_arbs_check_updates"
+            android:summary="@string/summary_arbs_check_updates"
+            android:defaultValue="false" />
         <Preference
             android:key="arbs_restore_defaults"
             android:title="@string/title_arbs_restore_defaults"

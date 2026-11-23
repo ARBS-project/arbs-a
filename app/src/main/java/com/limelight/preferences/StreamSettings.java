@@ -307,6 +307,17 @@ public class StreamSettings extends Activity {
                 }
             });
             arbsRefreshApexStatus();
+            // ARBS-A R2a: turning the update check on checks once right away (off by default, not part of restore defaults)
+            Preference updateCheck = findPreference(com.limelight.arbs.ArbsUpdateChecker.PREF_KEY);
+            if (updateCheck != null) {
+                updateCheck.setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
+                    @Override
+                    public boolean onPreferenceChange(Preference preference, Object newValue) {
+                        if (Boolean.TRUE.equals(newValue)) com.limelight.arbs.ArbsUpdateChecker.checkNow(getActivity());
+                        return true;
+                    }
+                });
+            }
             // ARBS A1-4: [ASB 기본값으로 복원] - ARBS 출력 항목만 ASB 기준 기본값으로(APEX first/테스트/입력 진단은 그대로)
             Preference restore = findPreference("arbs_restore_defaults");
             if (restore != null) {

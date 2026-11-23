@@ -33,4 +33,5 @@ ARBS는 Flydigi와 관련 없는 비공식 오픈소스 프로젝트다(Moonligh
 ## Later modifications (A1-3 and after)
 
 Changes after A1-2 (A1-3 … A1-5, B5 and later) are recorded only in this repository's git history: `git log` (and `git log --stat`).
+Since R2a the application ID is `io.github.arbs_project.arbsa` (debug: `.debug` suffix); the ID in the A1-1 section above is the earlier one.
 Files added for publication (R0): `README.md` (new), `README.upstream.md` (original README), `.gitignore` (broken `.cxx/` line fixed, ARBS block).

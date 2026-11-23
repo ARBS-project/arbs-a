@@ -287,4 +287,14 @@
     <string name="title_seekbar_vibrate_fallback_strength">에뮬레이트된 진동 강도 조정</string>
     <string name="summary_analog_scrolling">마우스 에뮬레이션 모드에서 스크롤할 아날로그 스틱을 선택하세요</string>
     <string name="suffix_seekbar_vibrate_fallback_strength">%</string>
+    <string name="title_arbs_check_updates">업데이트 확인</string>
+    <string name="summary_arbs_check_updates">기본은 꺼짐. 켜면 앱을 시작할 때 GitHub에서 ARBS-A 최신 정식판을 확인하고, 새 버전이면 Releases 페이지를 열지 묻습니다. 자동으로 받거나 설치하지 않습니다.</string>
+    <string name="arbs_update_available_title">ARBS-A 새 버전</string>
+    <string name="arbs_update_available_message">%1$s 버전이 나왔습니다(설치된 버전: %2$s). 브라우저로 Releases 페이지를 열까요?</string>
+    <string name="arbs_update_open">Releases 열기</string>
+    <string name="arbs_update_later">나중에</string>
+    <string name="toast_arbs_update_latest">ARBS-A가 최신 버전입니다.</string>
+    <string name="toast_arbs_update_no_release">아직 게시된 ARBS-A 정식판이 없습니다.</string>
+    <string name="toast_arbs_update_failed">업데이트를 확인하지 못했습니다. 네트워크를 확인한 뒤 다시 시도하세요.</string>
+    <string name="toast_arbs_update_no_browser">브라우저를 찾지 못했습니다. 주소: %1$s</string>
 </resources>

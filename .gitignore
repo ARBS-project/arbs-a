@@ -60,3 +60,11 @@ keystore.properties
 *.key
 .env
 evidence/
+
+# ARBS-A R2a: release signing material must never be committed
+*.idsig
+*.cer
+*.crt
+arbs-a-release.keystore
+arbs-a-cert-fingerprint.txt
+arbs-a-cert*.txt
