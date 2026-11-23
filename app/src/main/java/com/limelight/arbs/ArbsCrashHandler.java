@@ -55,7 +55,7 @@ public final class ArbsCrashHandler implements Thread.UncaughtExceptionHandler {
         StringWriter sw = new StringWriter();
         t.printStackTrace(new PrintWriter(sw));
         StringBuilder sb = new StringBuilder();
-        sb.append("ARBS Moonlight 크래시 보고 (IP·토큰 제거됨)\n");
+        sb.append("ARBS-A 크래시 보고 (IP·토큰 제거됨)\n");
         sb.append(header).append('\n');
         sb.append("스레드: ").append(threadName).append('\n');
         sb.append("예외: ").append(t.getClass().getName()).append('\n');

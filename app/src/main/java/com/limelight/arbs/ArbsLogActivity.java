@@ -35,7 +35,7 @@ public class ArbsLogActivity extends Activity {
         root.setPadding(p, p, p, p);
 
         TextView title = new TextView(this);
-        title.setText("ARBS Moonlight A1-1 로그 (수신 전용)");
+        title.setText("ARBS-A 로그 (수신 전용)");
         title.setTextSize(18f);
         title.setTypeface(title.getTypeface(), Typeface.BOLD);
         root.addView(title);

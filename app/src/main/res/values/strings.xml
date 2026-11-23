@@ -231,6 +231,7 @@
 
     <string name="category_host_settings">Host Settings</string>
     <string name="category_arbs">ARBS (A1-4)</string>
+    <string name="title_arbs_about">About ARBS-A</string>
     <string name="title_arbs_haptics_test">Report PS controller with HD haptics (test)</string>
     <string name="summary_arbs_haptics_test">Test only: tells the host this controller is a PlayStation pad with PCM haptics so the host sends haptics. They are only logged, never output. Off = normal behavior.</string>
     <string name="title_arbs_apex_first">APEX first (A1-2)</string>

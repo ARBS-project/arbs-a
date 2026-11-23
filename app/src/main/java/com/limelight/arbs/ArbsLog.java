@@ -42,7 +42,7 @@ public final class ArbsLog {
         if (instance == null) {
             String ts = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date());
             instance = new ArbsLog(new File(context.getApplicationContext().getFilesDir(), "arbs-a1-" + ts + ".log"));
-            instance.line("ARBS Moonlight A1-1 로그 — 수신 로그 전용, APEX/장치로 출력 없음");
+            instance.line("ARBS-A 로그 — 수신 로그 전용, APEX/장치로 출력 없음");
             instance.line("기기: " + Build.MANUFACTURER + " " + Build.MODEL + ", Android " + Build.VERSION.RELEASE + " (SDK " + Build.VERSION.SDK_INT + ")");
         }
         return instance;

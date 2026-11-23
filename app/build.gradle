@@ -11,8 +11,10 @@ android {
         minSdk 21
         targetSdk 36
 
-        versionName "12.2"
-        versionCode = 315
+        // ARBS-A R1b (D-R1b-13): product version; the Moonlight base stays 12.2 (About text below).
+        versionName "0.1.0"
+        versionCode = 316
+        resValue "string", "summary_arbs_about", "ARBS-A 0.1.0 - based on Moonlight Android 12.2 - GPL-3.0 - github.com/arbs-project/arbs-a"
 
         // Generate native debug symbols to allow Google Play to symbolicate our native crashes
         ndk.debugSymbolLevel = 'FULL'
@@ -84,8 +86,8 @@ android {
     buildTypes {
         debug {
             // ARBS: no ".debug" suffix, so the debug APK installs as dev.arbs.moonlight (coexists with com.limelight)
-            resValue "string", "app_label", "ARBS Moonlight"
-            resValue "string", "app_label_root", "ARBS Moonlight (Root)"
+            resValue "string", "app_label", "ARBS-A"
+            resValue "string", "app_label_root", "ARBS-A (Root)"
         }
         release {
             // To whomever is releasing/using an APK in release mode with
@@ -119,8 +121,8 @@ android {
             //
             // TL;DR: Leave the following line alone!
             applicationIdSuffix ".unofficial"
-            resValue "string", "app_label", "Moonlight"
-            resValue "string", "app_label_root", "Moonlight (Root)"
+            resValue "string", "app_label", "ARBS-A"
+            resValue "string", "app_label_root", "ARBS-A (Root)"
 
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

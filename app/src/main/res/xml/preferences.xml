@@ -195,6 +195,11 @@
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_arbs" android:key="category_arbs">
         <Preference
+            android:key="arbs_about"
+            android:title="@string/title_arbs_about"
+            android:summary="@string/summary_arbs_about"
+            android:selectable="false" />
+        <Preference
             android:key="arbs_restore_defaults"
             android:title="@string/title_arbs_restore_defaults"
             android:summary="@string/summary_arbs_restore_defaults" />
