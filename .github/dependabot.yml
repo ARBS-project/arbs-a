@@ -1,0 +1,7 @@
+# ARBS-A (CI1): Dependabot updates only the pinned GitHub Actions (commit SHA), once a month.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
